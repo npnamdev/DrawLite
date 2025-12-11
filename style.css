@@ -1,0 +1,325 @@
+#webext-draw-ui {
+    position: fixed;
+    top: 50%;
+    right: 15px;
+    transform: translateY(-50%);
+    z-index: 1000000;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    cursor: auto;
+    font-size: 12px;
+    transition: none;
+}
+
+#webext-draw-ui.dragging {
+    transition: none;
+}
+
+/* Custom tooltips */
+.webext-draw-tool-btn[title]:hover::after,
+.webext-draw-close-btn[title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    right: 45px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #333;
+    color: white;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 1000002;
+    pointer-events: none;
+    opacity: 1;
+    animation: fadeIn 0.2s ease;
+}
+
+/* Tooltip when toolbar is on the left side */
+.toolbar-left .webext-draw-tool-btn[title]:hover::after,
+.toolbar-left .webext-draw-close-btn[title]:hover::after {
+    right: auto;
+    left: 45px;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-50%) translateX(-5px); }
+    to { opacity: 1; transform: translateY(-50%) translateX(0); }
+}
+
+.webext-draw-toolbar {
+    background: #f0f0f0;
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    padding: 6px;
+    width: 48px;
+    border: 1px solid #e0e0e0;
+}
+
+.webext-drag-handle {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 20px;
+    cursor: move;
+    margin-top: 5px;
+    margin-bottom: 13px;
+    padding: 4px;
+    border-radius: 4px;
+}
+
+.webext-drag-dots {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 2px;
+}
+
+.webext-drag-dots span {
+    width: 3px;
+    height: 3px;
+    background: #999;
+    border-radius: 50%;
+}
+
+.webext-draw-toolbar-content {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.webext-draw-tool-btn {
+    background: white;
+    border: none;
+    border-radius: 6px;
+    color: #666;
+    cursor: pointer;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    margin: 0 auto;
+    position: relative;
+}
+
+.webext-draw-tool-btn:hover {
+    background: #e8e8e8;
+    transform: scale(1.05);
+}
+
+.webext-draw-tool-btn.active {
+    background: #007bff;
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+    transform: scale(1.05);
+}
+
+.webext-draw-tool-btn.popup-active {
+    background: #007bff;
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+    transform: scale(1.05);
+}
+
+.webext-draw-close-btn {
+    background: #f0f0f0;
+    border: none;
+    border-radius: 8px;
+    color: #666;
+    cursor: pointer;
+    width: 100%;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    margin-top: 4px;
+}
+
+.webext-draw-close-btn:hover {
+    background: #ff4444;
+    color: white;
+    transform: scale(1.02);
+}
+
+.webext-draw-popup {
+    position: fixed;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    padding: 12px;
+    min-width: 140px;
+    border: 1px solid #e0e0e0;
+    z-index: 1000001;
+    right: 73px;
+}
+
+/* Popup when toolbar is on the left side */
+.toolbar-left .webext-draw-popup {
+    right: auto;
+    left: 73px;
+}
+
+.webext-draw-popup-header {
+    font-size: 11px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.webext-draw-color-picker-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+#webext-color-picker {
+    width: 60px;
+    height: 60px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    background: none;
+}
+
+#webext-color-picker::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+#webext-color-picker::-webkit-color-swatch {
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+}
+
+.webext-draw-current-color {
+    flex: 1;
+    height: 40px;
+    border-radius: 8px;
+    border: 2px solid #e0e0e0;
+    background: #ff0000;
+    position: relative;
+    overflow: hidden;
+}
+
+.webext-draw-current-color::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(45deg, #ddd 25%, transparent 25%, transparent 75%, #ddd 75%, #ddd),
+                linear-gradient(45deg, #ddd 25%, transparent 25%, transparent 75%, #ddd 75%, #ddd);
+    background-size: 10px 10px;
+    background-position: 0 0, 5px 5px;
+    z-index: 0;
+}
+
+.webext-draw-current-color::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: inherit;
+    z-index: 1;
+}
+
+.webext-draw-quick-colors {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    justify-items: center;
+}
+
+.webext-draw-quick-color {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 2px solid #e0e0e0;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.webext-draw-quick-color:hover {
+    border-color: #007bff;
+    transform: scale(1.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.webext-draw-size-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.webext-draw-size-controls input[type="range"] {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    background: #e0e0e0;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.webext-draw-size-controls input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #007bff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+}
+
+.webext-draw-size-controls input[type="range"]::-webkit-slider-thumb:hover {
+    background: #0056b3;
+    transform: scale(1.1);
+}
+
+.webext-draw-size-controls input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #007bff;
+    cursor: pointer;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    transition: all 0.2s ease;
+}
+
+.webext-draw-size-controls input[type="range"]::-moz-range-thumb:hover {
+    background: #0056b3;
+    transform: scale(1.1);
+}
+
+#webext-draw-size-value {
+    font-weight: 600;
+    color: #333;
+    min-width: 20px;
+    text-align: center;
+    font-size: 12px;
+}
+
+#webext-draw-canvas {
+    cursor: crosshair;
+}
+
+@media (max-width: 768px) {
+    #webext-draw-ui {
+        right: 10px;
+        top: 10px;
+        transform: none;
+    }
+    
+    .webext-draw-toolbar {
+        width: 42px;
+        padding: 4px;
+    }
+    
+    .webext-draw-tool-btn {
+        width: 32px;
+        height: 32px;
+    }
+}
