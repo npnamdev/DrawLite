@@ -8,4 +8,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       chrome.tabs.sendMessage(tabs[0].id, { action: "toggleUI" });
     });
   }
+  
+  if (request.action === "captureScreenshot") {
+    chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
+      if (chrome.runtime.lastError) {
+        sendResponse({ error: chrome.runtime.lastError.message });
+      } else {
+        sendResponse({ dataUrl: dataUrl });
+      }
+    });
+    return true; // Keep message channel open for async response
+  }
 });

@@ -319,6 +319,12 @@ class WebDrawingExtension {
                             <line x1="14" y1="11" x2="14" y2="17"/>
                         </svg>
                     </button>
+                    <button class="webext-draw-tool-btn" data-tool="screenshot" title="Chụp màn hình khu vực">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                            <circle cx="12" cy="13" r="4"/>
+                        </svg>
+                    </button>
                 </div>
                 <button class="webext-draw-close-btn" title="Tắt extension">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -514,6 +520,12 @@ class WebDrawingExtension {
                 // Handle clear all tool
                 if (tool === 'clearall') {
                     this.clearCanvas();
+                    return;
+                }
+
+                // Handle screenshot tool
+                if (tool === 'screenshot') {
+                    this.startScreenshotMode();
                     return;
                 }
 
@@ -2401,6 +2413,209 @@ class WebDrawingExtension {
                 break;
             default:
                 this.canvas.style.cursor = 'crosshair';
+        }
+    }
+
+    startScreenshotMode() {
+        // Hide toolbar and canvas temporarily
+        const toolbar = document.querySelector('.webext-draw-toolbar');
+        const originalToolbarDisplay = toolbar ? toolbar.style.display : '';
+        if (toolbar) toolbar.style.display = 'none';
+        
+        // Hide canvas temporarily to capture clean screenshot
+        const originalCanvasDisplay = this.canvas.style.display;
+        this.canvas.style.display = 'none';
+        
+        // Hide SVG overlay
+        const originalSvgDisplay = this.svgOverlay.style.display;
+        this.svgOverlay.style.display = 'none';
+
+        // Create screenshot overlay
+        const overlay = document.createElement('div');
+        overlay.id = 'webext-screenshot-overlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.3);
+            cursor: crosshair;
+            z-index: 10000001;
+        `;
+
+        // Create selection box
+        const selectionBox = document.createElement('div');
+        selectionBox.id = 'webext-screenshot-selection';
+        selectionBox.style.cssText = `
+            position: fixed;
+            border: 2px dashed #fff;
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+            display: none;
+            z-index: 10000002;
+            pointer-events: none;
+        `;
+
+        // Create instruction text
+        const instruction = document.createElement('div');
+        instruction.id = 'webext-screenshot-instruction';
+        instruction.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 10000003;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        `;
+        instruction.textContent = 'Kéo để chọn vùng chụp màn hình. Nhấn ESC để hủy.';
+
+        document.body.appendChild(overlay);
+        document.body.appendChild(selectionBox);
+        document.body.appendChild(instruction);
+
+        let startX, startY, isSelecting = false;
+
+        const onMouseDown = (e) => {
+            isSelecting = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            selectionBox.style.left = startX + 'px';
+            selectionBox.style.top = startY + 'px';
+            selectionBox.style.width = '0px';
+            selectionBox.style.height = '0px';
+            selectionBox.style.display = 'block';
+        };
+
+        const onMouseMove = (e) => {
+            if (!isSelecting) return;
+            
+            const currentX = e.clientX;
+            const currentY = e.clientY;
+            
+            const left = Math.min(startX, currentX);
+            const top = Math.min(startY, currentY);
+            const width = Math.abs(currentX - startX);
+            const height = Math.abs(currentY - startY);
+            
+            selectionBox.style.left = left + 'px';
+            selectionBox.style.top = top + 'px';
+            selectionBox.style.width = width + 'px';
+            selectionBox.style.height = height + 'px';
+        };
+
+        const onMouseUp = async (e) => {
+            if (!isSelecting) return;
+            isSelecting = false;
+
+            const currentX = e.clientX;
+            const currentY = e.clientY;
+            
+            const left = Math.min(startX, currentX);
+            const top = Math.min(startY, currentY);
+            const width = Math.abs(currentX - startX);
+            const height = Math.abs(currentY - startY);
+
+            // Cleanup overlay elements
+            overlay.remove();
+            selectionBox.remove();
+            instruction.remove();
+
+            // Remove event listeners
+            document.removeEventListener('mousedown', onMouseDown);
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            document.removeEventListener('keydown', onKeyDown);
+
+            // Only capture if selection is meaningful
+            if (width > 10 && height > 10) {
+                // Small delay to ensure overlay is removed
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // Capture screenshot
+                await this.captureScreenshotRegion(left, top, width, height);
+            }
+
+            // Restore toolbar and canvas
+            if (toolbar) toolbar.style.display = originalToolbarDisplay;
+            this.canvas.style.display = originalCanvasDisplay;
+            this.svgOverlay.style.display = originalSvgDisplay;
+        };
+
+        const onKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                // Cleanup
+                overlay.remove();
+                selectionBox.remove();
+                instruction.remove();
+                document.removeEventListener('mousedown', onMouseDown);
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                document.removeEventListener('keydown', onKeyDown);
+
+                // Restore toolbar and canvas
+                if (toolbar) toolbar.style.display = originalToolbarDisplay;
+                this.canvas.style.display = originalCanvasDisplay;
+                this.svgOverlay.style.display = originalSvgDisplay;
+            }
+        };
+
+        overlay.addEventListener('mousedown', onMouseDown);
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+        document.addEventListener('keydown', onKeyDown);
+    }
+
+    async captureScreenshotRegion(x, y, width, height) {
+        try {
+            // Use chrome.tabs.captureVisibleTab via background script
+            const response = await chrome.runtime.sendMessage({
+                action: 'captureScreenshot'
+            });
+
+            if (response && response.dataUrl) {
+                // Create image from captured screenshot
+                const img = new Image();
+                img.onload = () => {
+                    // Create canvas to crop the region
+                    const cropCanvas = document.createElement('canvas');
+                    const dpr = window.devicePixelRatio || 1;
+                    cropCanvas.width = width * dpr;
+                    cropCanvas.height = height * dpr;
+                    const cropCtx = cropCanvas.getContext('2d');
+
+                    // Draw cropped region
+                    cropCtx.drawImage(
+                        img,
+                        x * dpr, y * dpr, width * dpr, height * dpr,
+                        0, 0, width * dpr, height * dpr
+                    );
+
+                    // Convert to blob and download
+                    cropCanvas.toBlob((blob) => {
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `screenshot-${Date.now()}.png`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }, 'image/png');
+                };
+                img.src = response.dataUrl;
+            } else {
+                console.error('Failed to capture screenshot:', response?.error);
+                alert('Không thể chụp màn hình. Vui lòng thử lại.');
+            }
+        } catch (error) {
+            console.error('Screenshot error:', error);
+            alert('Không thể chụp màn hình. Vui lòng thử lại.');
         }
     }
 }
