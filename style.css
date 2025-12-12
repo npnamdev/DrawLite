@@ -397,6 +397,50 @@
     box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
 }
 
+/* Screenshot popup styles */
+.webext-draw-screenshot-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.webext-draw-screenshot-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border: none;
+    border-radius: 8px;
+    background: #f5f5f5;
+    color: #333;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.webext-draw-screenshot-btn svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    color: #666;
+}
+
+.webext-draw-screenshot-btn:hover {
+    background: #e0e0e0;
+    transform: translateX(2px);
+}
+
+.webext-draw-screenshot-btn:hover svg {
+    color: #007bff;
+}
+
+.webext-draw-screenshot-btn span {
+    flex: 1;
+}
+
 .webext-draw-fill-controls {
     display: flex;
     flex-direction: column;

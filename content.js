@@ -465,6 +465,48 @@ class WebDrawingExtension {
         `;
         document.body.appendChild(shapesPopup);
 
+        // Create screenshot popup
+        const screenshotPopup = document.createElement('div');
+        screenshotPopup.id = 'webext-screenshot-popup';
+        screenshotPopup.className = 'webext-draw-popup';
+        screenshotPopup.style.display = 'none';
+        screenshotPopup.innerHTML = `
+            <div class="webext-draw-popup-header">Chụp màn hình</div>
+            <div class="webext-draw-screenshot-grid">
+                <button class="webext-draw-screenshot-btn" data-screenshot="region" title="Chụp theo vùng">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="4 2"/>
+                        <path d="M9 9h6v6H9z"/>
+                    </svg>
+                    <span>Chụp vùng</span>
+                </button>
+                <button class="webext-draw-screenshot-btn" data-screenshot="region-with-drawing" title="Chụp vùng kèm hình vẽ">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="4 2"/>
+                        <path d="M7 17l4-4 3 3 4-6"/>
+                    </svg>
+                    <span>Chụp vùng + hình vẽ</span>
+                </button>
+                <button class="webext-draw-screenshot-btn" data-screenshot="fullscreen" title="Chụp toàn màn hình">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <rect x="2" y="3" width="20" height="14" rx="2"/>
+                        <line x1="8" y1="21" x2="16" y2="21"/>
+                        <line x1="12" y1="17" x2="12" y2="21"/>
+                    </svg>
+                    <span>Toàn màn hình</span>
+                </button>
+                <button class="webext-draw-screenshot-btn" data-screenshot="fullscreen-with-drawing" title="Chụp toàn màn hình kèm hình vẽ">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <rect x="2" y="3" width="20" height="14" rx="2"/>
+                        <path d="M6 12l3-3 2 2 5-5"/>
+                        <line x1="8" y1="21" x2="16" y2="21"/>
+                        <line x1="12" y1="17" x2="12" y2="21"/>
+                    </svg>
+                    <span>Toàn màn hình + hình vẽ</span>
+                </button>
+            </div>
+        `;
+        document.body.appendChild(screenshotPopup);
 
         // Don't create toggle button anymore - toolbar shows directly
         // this.createToggleButton();
@@ -523,9 +565,9 @@ class WebDrawingExtension {
                     return;
                 }
 
-                // Handle screenshot tool
+                // Handle screenshot tool - show popup
                 if (tool === 'screenshot') {
-                    this.startScreenshotMode();
+                    this.togglePopup('screenshot', button);
                     return;
                 }
 
@@ -580,6 +622,25 @@ class WebDrawingExtension {
             });
         });
 
+        // Screenshot buttons in popup
+        const screenshotButtons = document.querySelectorAll('.webext-draw-screenshot-btn');
+        screenshotButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const screenshotType = e.currentTarget.dataset.screenshot;
+                this.closeAllPopups();
+                
+                if (screenshotType === 'region') {
+                    this.startScreenshotMode(false);
+                } else if (screenshotType === 'region-with-drawing') {
+                    this.startScreenshotMode(true);
+                } else if (screenshotType === 'fullscreen') {
+                    this.captureFullScreen(false);
+                } else if (screenshotType === 'fullscreen-with-drawing') {
+                    this.captureFullScreen(true);
+                }
+            });
+        });
+
         // Fill color checkbox (in color popup)
         const fillEnabledCheckbox = document.getElementById('webext-fill-enabled');
         fillEnabledCheckbox.addEventListener('change', (e) => {
@@ -612,6 +673,12 @@ class WebDrawingExtension {
                 !e.target.closest('#webext-shapes-popup')) {
                 shapesPopupEl.style.display = 'none';
                 document.querySelector('.webext-draw-tool-btn[data-tool="shapes"]')?.classList.remove('popup-active');
+            }
+            const screenshotPopupEl = document.getElementById('webext-screenshot-popup');
+            if (!e.target.closest('.webext-draw-tool-btn[data-tool="screenshot"]') &&
+                !e.target.closest('#webext-screenshot-popup')) {
+                screenshotPopupEl.style.display = 'none';
+                document.querySelector('.webext-draw-tool-btn[data-tool="screenshot"]')?.classList.remove('popup-active');
             }
         });
 
@@ -2201,11 +2268,13 @@ class WebDrawingExtension {
         const colorPopup = document.getElementById('webext-color-popup');
         const sizePopup = document.getElementById('webext-size-popup');
         const shapesPopup = document.getElementById('webext-shapes-popup');
+        const screenshotPopup = document.getElementById('webext-screenshot-popup');
 
         // Check if the popup is already open
         const isPopupOpen = (type === 'color' && colorPopup.style.display === 'block') ||
             (type === 'size' && sizePopup.style.display === 'block') ||
-            (type === 'shapes' && shapesPopup.style.display === 'block');
+            (type === 'shapes' && shapesPopup.style.display === 'block') ||
+            (type === 'screenshot' && screenshotPopup.style.display === 'block');
 
         // Close all popups first
         this.closeAllPopups();
@@ -2242,6 +2311,8 @@ class WebDrawingExtension {
             positionPopup(sizePopup);
         } else if (type === 'shapes') {
             positionPopup(shapesPopup);
+        } else if (type === 'screenshot') {
+            positionPopup(screenshotPopup);
         }
     }
 
@@ -2372,19 +2443,39 @@ class WebDrawingExtension {
             shapesPopup.style.bottom = 'auto';
             shapesPopup.style.transform = 'none';
         }
+
+        const screenshotPopup = document.getElementById('webext-screenshot-popup');
+        const screenshotBtn = document.querySelector('.webext-draw-tool-btn[data-tool="screenshot"]');
+        if (screenshotPopup && screenshotPopup.style.display === 'block' && screenshotBtn) {
+            const buttonRect = screenshotBtn.getBoundingClientRect();
+
+            if (isToolbarLeft) {
+                screenshotPopup.style.left = (buttonRect.right + 10) + 'px';
+                screenshotPopup.style.right = 'auto';
+            } else {
+                screenshotPopup.style.right = (window.innerWidth - buttonRect.left + 10) + 'px';
+                screenshotPopup.style.left = 'auto';
+            }
+            screenshotPopup.style.top = buttonRect.top + 'px';
+            screenshotPopup.style.bottom = 'auto';
+            screenshotPopup.style.transform = 'none';
+        }
     }
 
     closeAllPopups() {
         const colorPopup = document.getElementById('webext-color-popup');
         const sizePopup = document.getElementById('webext-size-popup');
         const shapesPopup = document.getElementById('webext-shapes-popup');
+        const screenshotPopup = document.getElementById('webext-screenshot-popup');
         colorPopup.style.display = 'none';
         sizePopup.style.display = 'none';
         shapesPopup.style.display = 'none';
+        screenshotPopup.style.display = 'none';
         // Reset transform to ensure clean state when reopened
         colorPopup.style.transform = '';
         sizePopup.style.transform = '';
         shapesPopup.style.transform = '';
+        screenshotPopup.style.transform = '';
         // Remove active state from all tool buttons
         document.querySelectorAll('.webext-draw-tool-btn').forEach(btn => {
             btn.classList.remove('popup-active');
@@ -2416,19 +2507,19 @@ class WebDrawingExtension {
         }
     }
 
-    startScreenshotMode() {
-        // Hide toolbar and canvas temporarily
+    startScreenshotMode(includeDrawing = false) {
+        // Hide toolbar temporarily
         const toolbar = document.querySelector('.webext-draw-toolbar');
         const originalToolbarDisplay = toolbar ? toolbar.style.display : '';
         if (toolbar) toolbar.style.display = 'none';
         
-        // Hide canvas temporarily to capture clean screenshot
+        // Hide canvas and SVG only if not including drawing
         const originalCanvasDisplay = this.canvas.style.display;
-        this.canvas.style.display = 'none';
-        
-        // Hide SVG overlay
         const originalSvgDisplay = this.svgOverlay.style.display;
-        this.svgOverlay.style.display = 'none';
+        if (!includeDrawing) {
+            this.canvas.style.display = 'none';
+            this.svgOverlay.style.display = 'none';
+        }
 
         // Create screenshot overlay
         const overlay = document.createElement('div');
@@ -2617,6 +2708,51 @@ class WebDrawingExtension {
             console.error('Screenshot error:', error);
             alert('Không thể chụp màn hình. Vui lòng thử lại.');
         }
+    }
+
+    async captureFullScreen(includeDrawing = false) {
+        // Hide toolbar temporarily
+        const toolbar = document.querySelector('.webext-draw-toolbar');
+        const originalToolbarDisplay = toolbar ? toolbar.style.display : '';
+        if (toolbar) toolbar.style.display = 'none';
+        
+        // Hide canvas and SVG only if not including drawing
+        const originalCanvasDisplay = this.canvas.style.display;
+        const originalSvgDisplay = this.svgOverlay.style.display;
+        if (!includeDrawing) {
+            this.canvas.style.display = 'none';
+            this.svgOverlay.style.display = 'none';
+        }
+
+        // Small delay to ensure elements are hidden
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        try {
+            const response = await chrome.runtime.sendMessage({
+                action: 'captureScreenshot'
+            });
+
+            if (response && response.dataUrl) {
+                // Download full screenshot directly
+                const a = document.createElement('a');
+                a.href = response.dataUrl;
+                a.download = `screenshot-fullscreen-${Date.now()}.png`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            } else {
+                console.error('Failed to capture screenshot:', response?.error);
+                alert('Không thể chụp màn hình. Vui lòng thử lại.');
+            }
+        } catch (error) {
+            console.error('Screenshot error:', error);
+            alert('Không thể chụp màn hình. Vui lòng thử lại.');
+        }
+
+        // Restore toolbar and canvas
+        if (toolbar) toolbar.style.display = originalToolbarDisplay;
+        this.canvas.style.display = originalCanvasDisplay;
+        this.svgOverlay.style.display = originalSvgDisplay;
     }
 }
 
