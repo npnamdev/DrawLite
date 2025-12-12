@@ -471,7 +471,6 @@ class WebDrawingExtension {
         screenshotPopup.className = 'webext-draw-popup';
         screenshotPopup.style.display = 'none';
         screenshotPopup.innerHTML = `
-            <div class="webext-draw-popup-header">Chụp màn hình</div>
             <div class="webext-draw-screenshot-grid">
                 <button class="webext-draw-screenshot-btn" data-screenshot="region" title="Chụp theo vùng">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -480,13 +479,6 @@ class WebDrawingExtension {
                     </svg>
                     <span>Chụp vùng</span>
                 </button>
-                <button class="webext-draw-screenshot-btn" data-screenshot="region-with-drawing" title="Chụp vùng kèm hình vẽ">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="4 2"/>
-                        <path d="M7 17l4-4 3 3 4-6"/>
-                    </svg>
-                    <span>Chụp vùng + hình vẽ</span>
-                </button>
                 <button class="webext-draw-screenshot-btn" data-screenshot="fullscreen" title="Chụp toàn màn hình">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <rect x="2" y="3" width="20" height="14" rx="2"/>
@@ -494,15 +486,6 @@ class WebDrawingExtension {
                         <line x1="12" y1="17" x2="12" y2="21"/>
                     </svg>
                     <span>Toàn màn hình</span>
-                </button>
-                <button class="webext-draw-screenshot-btn" data-screenshot="fullscreen-with-drawing" title="Chụp toàn màn hình kèm hình vẽ">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <rect x="2" y="3" width="20" height="14" rx="2"/>
-                        <path d="M6 12l3-3 2 2 5-5"/>
-                        <line x1="8" y1="21" x2="16" y2="21"/>
-                        <line x1="12" y1="17" x2="12" y2="21"/>
-                    </svg>
-                    <span>Toàn màn hình + hình vẽ</span>
                 </button>
             </div>
         `;
@@ -629,14 +612,13 @@ class WebDrawingExtension {
                 const screenshotType = e.currentTarget.dataset.screenshot;
                 this.closeAllPopups();
                 
+                // Auto-detect if there are drawings
+                const hasDrawings = this.shapes.length > 0;
+                
                 if (screenshotType === 'region') {
-                    this.startScreenshotMode(false);
-                } else if (screenshotType === 'region-with-drawing') {
-                    this.startScreenshotMode(true);
+                    this.startScreenshotMode(hasDrawings);
                 } else if (screenshotType === 'fullscreen') {
-                    this.captureFullScreen(false);
-                } else if (screenshotType === 'fullscreen-with-drawing') {
-                    this.captureFullScreen(true);
+                    this.captureFullScreen(hasDrawings);
                 }
             });
         });
@@ -2299,10 +2281,24 @@ class WebDrawingExtension {
                 popup.style.right = (window.innerWidth - buttonRect.left + 10) + 'px';
                 popup.style.left = 'auto';
             }
-            popup.style.top = buttonRect.top + 'px';
+            
+            // Show popup temporarily to get its height
+            popup.style.visibility = 'hidden';
+            popup.style.display = 'block';
+            const popupHeight = popup.offsetHeight;
+            popup.style.visibility = '';
+            
+            // Check if popup would go below viewport
+            const spaceBelow = window.innerHeight - buttonRect.top;
+            if (spaceBelow < popupHeight) {
+                // Position popup above or adjust to fit
+                const newTop = Math.max(10, window.innerHeight - popupHeight - 10);
+                popup.style.top = newTop + 'px';
+            } else {
+                popup.style.top = buttonRect.top + 'px';
+            }
             popup.style.bottom = 'auto';
             popup.style.transform = 'none';
-            popup.style.display = 'block';
         };
 
         if (type === 'color') {
@@ -2394,72 +2390,43 @@ class WebDrawingExtension {
         const colorPopup = document.getElementById('webext-color-popup');
         const sizePopup = document.getElementById('webext-size-popup');
         const shapesPopup = document.getElementById('webext-shapes-popup');
+        const screenshotPopup = document.getElementById('webext-screenshot-popup');
         const colorBtn = document.querySelector('.webext-draw-tool-btn[data-tool="color"]');
         const sizeBtn = document.querySelector('.webext-draw-tool-btn[data-tool="size"]');
         const shapesBtn = document.querySelector('.webext-draw-tool-btn[data-tool="shapes"]');
+        const screenshotBtn = document.querySelector('.webext-draw-tool-btn[data-tool="screenshot"]');
         const isToolbarLeft = this.uiElement.classList.contains('toolbar-left');
 
-        if (colorPopup && colorPopup.style.display === 'block' && colorBtn) {
-            const buttonRect = colorBtn.getBoundingClientRect();
+        const updatePopupPosition = (popup, btn) => {
+            if (!popup || popup.style.display !== 'block' || !btn) return;
+            
+            const buttonRect = btn.getBoundingClientRect();
+            const popupHeight = popup.offsetHeight;
 
             if (isToolbarLeft) {
-                colorPopup.style.left = (buttonRect.right + 10) + 'px';
-                colorPopup.style.right = 'auto';
+                popup.style.left = (buttonRect.right + 10) + 'px';
+                popup.style.right = 'auto';
             } else {
-                colorPopup.style.right = (window.innerWidth - buttonRect.left + 10) + 'px';
-                colorPopup.style.left = 'auto';
+                popup.style.right = (window.innerWidth - buttonRect.left + 10) + 'px';
+                popup.style.left = 'auto';
             }
-            colorPopup.style.top = buttonRect.top + 'px';
-            colorPopup.style.bottom = 'auto';
-            colorPopup.style.transform = 'none';
-        }
-
-        if (sizePopup && sizePopup.style.display === 'block' && sizeBtn) {
-            const buttonRect = sizeBtn.getBoundingClientRect();
-
-            if (isToolbarLeft) {
-                sizePopup.style.left = (buttonRect.right + 10) + 'px';
-                sizePopup.style.right = 'auto';
+            
+            // Check if popup would go below viewport
+            const spaceBelow = window.innerHeight - buttonRect.top;
+            if (spaceBelow < popupHeight) {
+                const newTop = Math.max(10, window.innerHeight - popupHeight - 10);
+                popup.style.top = newTop + 'px';
             } else {
-                sizePopup.style.right = (window.innerWidth - buttonRect.left + 10) + 'px';
-                sizePopup.style.left = 'auto';
+                popup.style.top = buttonRect.top + 'px';
             }
-            sizePopup.style.top = buttonRect.top + 'px';
-            sizePopup.style.bottom = 'auto';
-            sizePopup.style.transform = 'none';
-        }
+            popup.style.bottom = 'auto';
+            popup.style.transform = 'none';
+        };
 
-        if (shapesPopup && shapesPopup.style.display === 'block' && shapesBtn) {
-            const buttonRect = shapesBtn.getBoundingClientRect();
-
-            if (isToolbarLeft) {
-                shapesPopup.style.left = (buttonRect.right + 10) + 'px';
-                shapesPopup.style.right = 'auto';
-            } else {
-                shapesPopup.style.right = (window.innerWidth - buttonRect.left + 10) + 'px';
-                shapesPopup.style.left = 'auto';
-            }
-            shapesPopup.style.top = buttonRect.top + 'px';
-            shapesPopup.style.bottom = 'auto';
-            shapesPopup.style.transform = 'none';
-        }
-
-        const screenshotPopup = document.getElementById('webext-screenshot-popup');
-        const screenshotBtn = document.querySelector('.webext-draw-tool-btn[data-tool="screenshot"]');
-        if (screenshotPopup && screenshotPopup.style.display === 'block' && screenshotBtn) {
-            const buttonRect = screenshotBtn.getBoundingClientRect();
-
-            if (isToolbarLeft) {
-                screenshotPopup.style.left = (buttonRect.right + 10) + 'px';
-                screenshotPopup.style.right = 'auto';
-            } else {
-                screenshotPopup.style.right = (window.innerWidth - buttonRect.left + 10) + 'px';
-                screenshotPopup.style.left = 'auto';
-            }
-            screenshotPopup.style.top = buttonRect.top + 'px';
-            screenshotPopup.style.bottom = 'auto';
-            screenshotPopup.style.transform = 'none';
-        }
+        updatePopupPosition(colorPopup, colorBtn);
+        updatePopupPosition(sizePopup, sizeBtn);
+        updatePopupPosition(shapesPopup, shapesBtn);
+        updatePopupPosition(screenshotPopup, screenshotBtn);
     }
 
     closeAllPopups() {
