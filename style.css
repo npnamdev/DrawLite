@@ -233,10 +233,85 @@
     z-index: 1;
 }
 
+/* Color Picker - Photoshop style */
+.webext-color-picker-container {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.webext-color-picker-saturation {
+    width: 140px;
+    height: 140px;
+    position: relative;
+    border-radius: 8px;
+    cursor: crosshair;
+    background-color: #ff0000;
+    overflow: hidden;
+}
+
+.webext-color-picker-saturation-white {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to right, #fff, transparent);
+    border-radius: 8px;
+}
+
+.webext-color-picker-saturation-black {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, #000, transparent);
+    border-radius: 8px;
+}
+
+.webext-color-picker-cursor {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(0, 0, 0, 0.3);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    left: 100%;
+    top: 0;
+}
+
+.webext-color-picker-hue {
+    width: 20px;
+    height: 140px;
+    position: relative;
+    border-radius: 8px;
+    cursor: pointer;
+    background: linear-gradient(to bottom,
+        #ff0000 0%,
+        #ffff00 17%,
+        #00ff00 33%,
+        #00ffff 50%,
+        #0000ff 67%,
+        #ff00ff 83%,
+        #ff0000 100%
+    );
+}
+
+.webext-color-picker-hue-cursor {
+    position: absolute;
+    left: -2px;
+    right: -2px;
+    height: 6px;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 3px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    transform: translateY(-50%);
+    pointer-events: none;
+    top: 0;
+}
+
 .webext-draw-quick-colors {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 6px;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
     justify-items: center;
 }
 
@@ -307,18 +382,48 @@
     gap: 10px;
 }
 
-.webext-draw-checkbox-label {
+.webext-draw-switch-label {
     display: flex;
     align-items: center;
     gap: 8px;
     cursor: pointer;
     font-size: 13px;
+    margin-top: 10px;
 }
 
-.webext-draw-checkbox-label input[type="checkbox"] {
+.webext-draw-switch {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    background: #ccc;
+    border-radius: 20px;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+}
+
+.webext-draw-switch::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
     width: 16px;
     height: 16px;
-    cursor: pointer;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.webext-draw-switch-label input {
+    display: none;
+}
+
+.webext-draw-switch-label input:checked + .webext-draw-switch {
+    background: #007bff;
+}
+
+.webext-draw-switch-label input:checked + .webext-draw-switch::after {
+    transform: translateX(16px);
 }
 
 .webext-fill-colors {

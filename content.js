@@ -339,12 +339,20 @@ class WebDrawingExtension {
         colorPopup.className = 'webext-draw-popup';
         colorPopup.style.display = 'none';
         colorPopup.innerHTML = `
-            <div class="webext-draw-quick-colors">
-                <div class="webext-draw-quick-color webext-draw-custom-color" data-color="custom" title="Chọn màu tùy chỉnh" style="background: linear-gradient(45deg, #ff0000 0%, #00ff00 33%, #0000ff 66%, #ffff00 100%); position: relative;">
-                    <input type="color" id="webext-custom-color-input" style="position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer;">
+            <div class="webext-color-picker-container">
+                <div class="webext-color-picker-saturation" id="webext-saturation-panel">
+                    <div class="webext-color-picker-saturation-white"></div>
+                    <div class="webext-color-picker-saturation-black"></div>
+                    <div class="webext-color-picker-cursor" id="webext-saturation-cursor"></div>
                 </div>
+                <div class="webext-color-picker-hue" id="webext-hue-slider">
+                    <div class="webext-color-picker-hue-cursor" id="webext-hue-cursor"></div>
+                </div>
+            </div>
+            <div class="webext-draw-quick-colors">
                 <div class="webext-draw-quick-color active" data-color="#000000" style="background:#000000"></div>
                 <div class="webext-draw-quick-color" data-color="#ffffff" style="background:#ffffff"></div>
+                <div class="webext-draw-quick-color" data-color="#808080" style="background:#808080"></div>
                 <div class="webext-draw-quick-color" data-color="#ff0000" style="background:#ff0000"></div>
                 <div class="webext-draw-quick-color" data-color="#00ff00" style="background:#00ff00"></div>
                 <div class="webext-draw-quick-color" data-color="#0000ff" style="background:#0000ff"></div>
@@ -358,8 +366,9 @@ class WebDrawingExtension {
                 <div class="webext-draw-quick-color" data-color="#32cd32" style="background:#32cd32"></div>
                 <div class="webext-draw-quick-color" data-color="#4169e1" style="background:#4169e1"></div>
             </div>
-            <label class="webext-draw-checkbox-label" style="margin-top: 10px;">
+            <label class="webext-draw-switch-label">
                 <input type="checkbox" id="webext-fill-enabled">
+                <span class="webext-draw-switch"></span>
                 <span>Tô màu bên trong</span>
             </label>
         `;
@@ -456,7 +465,6 @@ class WebDrawingExtension {
     }
 
     setupEventListeners() {
-        const customColorInput = document.getElementById('webext-custom-color-input');
         const lineWidthSlider = document.getElementById('webext-line-width');
         const sizeValue = document.getElementById('webext-draw-size-value');
         const toolButtons = document.querySelectorAll('.webext-draw-tool-btn');
@@ -466,6 +474,9 @@ class WebDrawingExtension {
         const sizePopup = document.getElementById('webext-size-popup');
         const toggleBtn = document.getElementById('webext-toggle-btn');
         const dragHandle = document.querySelector('.webext-drag-handle');
+
+        // Setup color picker
+        this.setupColorPicker();
 
         closeBtn.addEventListener('click', () => this.hideExtension());
 
@@ -518,22 +529,17 @@ class WebDrawingExtension {
         quickColors.forEach(item => {
             item.addEventListener('click', (e) => {
                 const color = e.target.dataset.color;
-                if (color === 'custom') {
-                    // Trigger the hidden color input
-                    customColorInput.click();
-                } else {
-                    this.currentColor = color;
-                    // Update active state for colors
-                    quickColors.forEach(c => c.classList.remove('active'));
-                    e.target.classList.add('active');
+                this.currentColor = color;
+                // Update fill color if fill is enabled
+                if (this.fillEnabled) {
+                    this.fillColor = color;
                 }
+                // Update active state for colors
+                quickColors.forEach(c => c.classList.remove('active'));
+                e.target.classList.add('active');
+                // Update color picker to match
+                this.updateColorPickerFromColor(color);
             });
-        });
-
-        customColorInput.addEventListener('change', (e) => {
-            this.currentColor = e.target.value;
-            // Remove active from all quick colors when custom color is selected
-            quickColors.forEach(c => c.classList.remove('active'));
         });
 
         lineWidthSlider.addEventListener('input', (e) => {
@@ -640,6 +646,153 @@ class WebDrawingExtension {
                 return false;
             }
         }, { capture: true });
+    }
+
+    setupColorPicker() {
+        const saturationPanel = document.getElementById('webext-saturation-panel');
+        const saturationCursor = document.getElementById('webext-saturation-cursor');
+        const hueSlider = document.getElementById('webext-hue-slider');
+        const hueCursor = document.getElementById('webext-hue-cursor');
+
+        // Initialize color picker state
+        this.colorPickerHue = 0;
+        this.colorPickerSaturation = 100;
+        this.colorPickerBrightness = 0;
+
+        let isDraggingSaturation = false;
+        let isDraggingHue = false;
+
+        // Update saturation panel background based on hue
+        const updateSaturationBackground = () => {
+            const hueColor = `hsl(${this.colorPickerHue}, 100%, 50%)`;
+            saturationPanel.style.backgroundColor = hueColor;
+        };
+
+        // Convert HSB to Hex
+        const hsbToHex = (h, s, b) => {
+            s /= 100;
+            b /= 100;
+            const k = (n) => (n + h / 60) % 6;
+            const f = (n) => b * (1 - s * Math.max(0, Math.min(k(n), 4 - k(n), 1)));
+            const r = Math.round(255 * f(5));
+            const g = Math.round(255 * f(3));
+            const b2 = Math.round(255 * f(1));
+            return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b2.toString(16).padStart(2, '0')}`;
+        };
+
+        // Update color from picker
+        const updateColorFromPicker = () => {
+            const color = hsbToHex(this.colorPickerHue, this.colorPickerSaturation, this.colorPickerBrightness);
+            this.currentColor = color;
+            // Update fill color if fill is enabled
+            if (this.fillEnabled) {
+                this.fillColor = color;
+            }
+            // Remove active from quick colors
+            document.querySelectorAll('.webext-draw-quick-color').forEach(c => c.classList.remove('active'));
+        };
+
+        // Saturation panel events
+        const handleSaturationMove = (e) => {
+            const rect = saturationPanel.getBoundingClientRect();
+            let x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+            let y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+
+            this.colorPickerSaturation = (x / rect.width) * 100;
+            this.colorPickerBrightness = 100 - (y / rect.height) * 100;
+
+            saturationCursor.style.left = x + 'px';
+            saturationCursor.style.top = y + 'px';
+
+            updateColorFromPicker();
+        };
+
+        saturationPanel.addEventListener('mousedown', (e) => {
+            isDraggingSaturation = true;
+            handleSaturationMove(e);
+            e.preventDefault();
+        });
+
+        // Hue slider events
+        const handleHueMove = (e) => {
+            const rect = hueSlider.getBoundingClientRect();
+            let y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+
+            this.colorPickerHue = (y / rect.height) * 360;
+
+            hueCursor.style.top = y + 'px';
+            updateSaturationBackground();
+            updateColorFromPicker();
+        };
+
+        hueSlider.addEventListener('mousedown', (e) => {
+            isDraggingHue = true;
+            handleHueMove(e);
+            e.preventDefault();
+        });
+
+        // Global mouse events for dragging
+        document.addEventListener('mousemove', (e) => {
+            if (isDraggingSaturation) {
+                handleSaturationMove(e);
+            }
+            if (isDraggingHue) {
+                handleHueMove(e);
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDraggingSaturation = false;
+            isDraggingHue = false;
+        });
+
+        // Initialize
+        updateSaturationBackground();
+    }
+
+    updateColorPickerFromColor(hexColor) {
+        // Convert hex to HSB
+        const hex = hexColor.replace('#', '');
+        const r = parseInt(hex.substr(0, 2), 16) / 255;
+        const g = parseInt(hex.substr(2, 2), 16) / 255;
+        const b = parseInt(hex.substr(4, 2), 16) / 255;
+
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const d = max - min;
+
+        let h = 0;
+        if (d !== 0) {
+            if (max === r) h = ((g - b) / d + 6) % 6;
+            else if (max === g) h = (b - r) / d + 2;
+            else h = (r - g) / d + 4;
+            h *= 60;
+        }
+
+        const s = max === 0 ? 0 : (d / max) * 100;
+        const v = max * 100;
+
+        this.colorPickerHue = h;
+        this.colorPickerSaturation = s;
+        this.colorPickerBrightness = v;
+
+        // Update UI
+        const saturationPanel = document.getElementById('webext-saturation-panel');
+        const saturationCursor = document.getElementById('webext-saturation-cursor');
+        const hueCursor = document.getElementById('webext-hue-cursor');
+        const hueSlider = document.getElementById('webext-hue-slider');
+
+        if (saturationPanel && saturationCursor && hueCursor && hueSlider) {
+            const satRect = saturationPanel.getBoundingClientRect();
+            const hueRect = hueSlider.getBoundingClientRect();
+
+            saturationCursor.style.left = (s / 100) * satRect.width + 'px';
+            saturationCursor.style.top = ((100 - v) / 100) * satRect.height + 'px';
+            hueCursor.style.top = (h / 360) * hueRect.height + 'px';
+
+            // Update saturation panel background
+            saturationPanel.style.backgroundColor = `hsl(${h}, 100%, 50%)`;
+        }
     }
 
     enableDrawing() {
