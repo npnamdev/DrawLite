@@ -27,32 +27,32 @@ class WebDrawingExtension {
         this.dragStartY = 0;
         this.toolbarInitialX = 0;
         this.toolbarInitialY = 0;
-        
+
         // Space key panning
         this.isSpacePressed = false;
         this.isPanning = false;
         this.panStartX = 0;
         this.panStartY = 0;
         this.previousDrawingMode = 'pen';
-        
+
         // Canvas state for eraser persistence
         this.canvasImageData = null;
-        
+
         // Resize handles
         this.isResizing = false;
         this.resizeHandle = null; // 'nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'rotate'
         this.resizeStartX = 0;
         this.resizeStartY = 0;
         this.originalBounds = null;
-        
+
         // Rotation
         this.isRotating = false;
         this.rotateStartAngle = 0;
-        
+
         // Fill color
         this.fillColor = 'transparent';
         this.fillEnabled = false;
-        
+
         this.setupMessageListener();
     }
 
@@ -77,7 +77,7 @@ class WebDrawingExtension {
         this.cleanupExistingElements();
         this.isInitialized = false;
     }
-    
+
     createToggleButton() {
         const toggleBtn = document.createElement('button');
         toggleBtn.id = 'webext-toggle-btn';
@@ -98,18 +98,18 @@ class WebDrawingExtension {
             z-index: 1000000;
             transition: all 0.2s ease;
         `;
-        
+
         toggleBtn.addEventListener('mouseenter', () => {
             toggleBtn.style.transform = 'scale(1.1)';
         });
-        
+
         toggleBtn.addEventListener('mouseleave', () => {
             toggleBtn.style.transform = 'scale(1)';
         });
-        
+
         document.body.appendChild(toggleBtn);
     }
-    
+
     showToolbar() {
         this.uiElement.style.display = 'block';
         this.isToolbarVisible = true;
@@ -119,7 +119,7 @@ class WebDrawingExtension {
             toggleBtn.remove();
         }
     }
-    
+
     hideToolbar() {
         this.uiElement.style.display = 'none';
         this.isToolbarVisible = false;
@@ -134,10 +134,10 @@ class WebDrawingExtension {
         this.isInitialized = true;
         this.showToolbar(); // Show toolbar directly instead of toggle button
         this.enableDrawing(); // Enable drawing by default
-        
+
         // Default: toolbar is on the right, so popup opens on the left
         // No class needed - popup will open to the left by default
-        
+
         // Set pen tool as active by default
         const penTool = document.querySelector('.webext-draw-tool-btn[data-tool="pen"]');
         if (penTool) {
@@ -151,25 +151,25 @@ class WebDrawingExtension {
         if (existingCanvas) {
             existingCanvas.remove();
         }
-        
+
         // Remove existing SVG overlay if present
         const existingSVG = document.getElementById('webext-draw-svg-overlay');
         if (existingSVG) {
             existingSVG.remove();
         }
-        
+
         // Remove existing toggle button if present
         const existingToggleBtn = document.getElementById('webext-toggle-btn');
         if (existingToggleBtn) {
             existingToggleBtn.remove();
         }
-        
+
         // Remove existing UI if present
         const existingUI = document.getElementById('webext-draw-ui');
         if (existingUI) {
             existingUI.remove();
         }
-        
+
         // Remove existing popups if present
         const existingColorPopup = document.getElementById('webext-color-popup');
         if (existingColorPopup) {
@@ -210,28 +210,28 @@ class WebDrawingExtension {
             pointer-events: auto;
             background: transparent;
         `;
-        
+
         this.ctx = this.canvas.getContext('2d');
         this.resizeCanvas();
         document.body.appendChild(this.canvas);
-        
+
         window.addEventListener('resize', () => this.resizeCanvas());
     }
 
     resizeCanvas() {
         const dpr = window.devicePixelRatio || 1;
-        
+
         // Set canvas size accounting for device pixel ratio
         this.canvas.width = window.innerWidth * dpr;
         this.canvas.height = window.innerHeight * dpr;
-        
+
         // Scale canvas CSS size to match window
         this.canvas.style.width = window.innerWidth + 'px';
         this.canvas.style.height = window.innerHeight + 'px';
-        
+
         // Scale context to match device pixel ratio
         this.ctx.scale(dpr, dpr);
-        
+
         // Redraw all shapes after resize
         this.redrawAllShapes();
     }
@@ -252,13 +252,13 @@ class WebDrawingExtension {
                 <div class="webext-draw-toolbar-content">
                     <!-- Drawing Tools -->
                     <button class="webext-draw-tool-btn" data-tool="pen" title="Vẽ tự do (Bút)">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <path d="M12 19l7-7 3 3-7 7-3-3z"/>
                             <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
                         </svg>
                     </button>
                     <button class="webext-draw-tool-btn" data-tool="text" title="Viết chữ">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <polyline points="4 7 4 4 20 4 20 7"/>
                             <line x1="9" y1="20" x2="15" y2="20"/>
                             <line x1="12" y1="4" x2="12" y2="20"/>
@@ -266,7 +266,7 @@ class WebDrawingExtension {
                     </button>
                     <!-- Shapes (grouped) -->
                     <button class="webext-draw-tool-btn" data-tool="shapes" title="Hình dạng">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"/>
                             <rect x="3" y="14" width="7" height="7" rx="1"/>
                             <circle cx="17.5" cy="17.5" r="3.5"/>
@@ -274,7 +274,7 @@ class WebDrawingExtension {
                     </button>
                     <!-- Edit Tools -->
                     <button class="webext-draw-tool-btn" data-tool="move" title="Di chuyển hình đã vẽ">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <polyline points="5 9 2 12 5 15"/>
                             <polyline points="9 5 12 2 15 5"/>
                             <polyline points="15 19 12 22 9 19"/>
@@ -284,14 +284,14 @@ class WebDrawingExtension {
                         </svg>
                     </button>
                     <button class="webext-draw-tool-btn" data-tool="eraser" title="Tẩy (Xóa)">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <path d="M20 20H7l-4-4a1 1 0 0 1 0-1.414l9-9a1 1 0 0 1 1.414 0l7 7a1 1 0 0 1 0 1.414l-4 4"/>
                             <line x1="11" y1="11" x2="17" y2="17"/>
                         </svg>
                     </button>
                     <!-- Settings -->
                     <button class="webext-draw-tool-btn" data-tool="color" title="Chọn màu vẽ">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M19 12H2"/>
                             <path d="M21.145 18.38A3.34 3.34 0 0 1 20 16.5a3.3 3.3 0 0 1-1.145 1.88c-.575.46-.855 1.02-.855 1.595A2 2 0 0 0 20 22a2 2 0 0 0 2-2.025c0-.58-.285-1.13-.855-1.595"/>
                             <path d="m6 2 5 5"/>
@@ -299,20 +299,20 @@ class WebDrawingExtension {
                         </svg>
                     </button>
                     <button class="webext-draw-tool-btn" data-tool="size" title="Độ dày nét vẽ">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="12" cy="12" r="10"/>
                             <circle cx="12" cy="12" r="1"/>
                         </svg>
                     </button>
                     <button class="webext-draw-tool-btn" data-tool="picker" title="Lấy màu từ màn hình">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="m12 9-8.414 8.414A2 2 0 0 0 3 18.828v1.344a2 2 0 0 1-.586 1.414A2 2 0 0 1 3.828 21h1.344a2 2 0 0 0 1.414-.586L15 12"/>
                             <path d="m18 9 .4.4a1 1 0 1 1-3 3l-3.8-3.8a1 1 0 1 1 3-3l.4.4 3.4-3.4a1 1 0 1 1 3 3z"/>
                             <path d="m2 22 .414-.414"/>
                         </svg>
                     </button>
                     <button class="webext-draw-tool-btn webext-draw-clear-btn" data-tool="clearall" title="Xóa tất cả">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <polyline points="3 6 5 6 21 6"/>
                             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                             <line x1="10" y1="11" x2="10" y2="17"/>
@@ -321,7 +321,7 @@ class WebDrawingExtension {
                     </button>
                 </div>
                 <button class="webext-draw-close-btn" title="Tắt extension">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <line x1="18" y1="6" x2="6" y2="18"/>
                         <line x1="6" y1="6" x2="18" y2="18"/>
                     </svg>
@@ -329,10 +329,10 @@ class WebDrawingExtension {
             </div>
             
             `;
-        
+
         document.body.appendChild(ui);
         this.uiElement = ui;
-        
+
         // Create popups separately and append directly to body (not inside ui)
         const colorPopup = document.createElement('div');
         colorPopup.id = 'webext-color-popup';
@@ -364,7 +364,7 @@ class WebDrawingExtension {
             </label>
         `;
         document.body.appendChild(colorPopup);
-        
+
         const sizePopup = document.createElement('div');
         sizePopup.id = 'webext-size-popup';
         sizePopup.className = 'webext-draw-popup';
@@ -376,7 +376,7 @@ class WebDrawingExtension {
             </div>
         `;
         document.body.appendChild(sizePopup);
-        
+
         const shapesPopup = document.createElement('div');
         shapesPopup.id = 'webext-shapes-popup';
         shapesPopup.className = 'webext-draw-popup';
@@ -384,64 +384,64 @@ class WebDrawingExtension {
         shapesPopup.innerHTML = `
             <div class="webext-draw-shapes-grid">
                 <button class="webext-draw-shape-btn" data-shape="line" title="Đường thẳng">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <line x1="5" y1="19" x2="19" y2="5"/>
                     </svg>
                 </button>
                 <button class="webext-draw-shape-btn" data-shape="arrow" title="Mũi tên">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <line x1="5" y1="12" x2="19" y2="12"/>
                         <polyline points="12 5 19 12 12 19"/>
                     </svg>
                 </button>
                 <button class="webext-draw-shape-btn" data-shape="rectangle" title="Hình chữ nhật">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
                     </svg>
                 </button>
                 <button class="webext-draw-shape-btn" data-shape="circle" title="Hình tròn">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <circle cx="12" cy="12" r="10"/>
                     </svg>
                 </button>
                 <button class="webext-draw-shape-btn" data-shape="triangle" title="Tam giác">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <path d="M12 2L2 20h20L12 2z"/>
                     </svg>
                 </button>
                 <button class="webext-draw-shape-btn" data-shape="star" title="Ngôi sao">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                     </svg>
                 </button>
                 <button class="webext-draw-shape-btn" data-shape="diamond" title="Hình thoi">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <path d="M12 2L22 12L12 22L2 12L12 2z"/>
                     </svg>
                 </button>
                 <button class="webext-draw-shape-btn" data-shape="hexagon" title="Lục giác">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <path d="M12 2L21 7V17L12 22L3 17V7L12 2z"/>
                     </svg>
                 </button>
                 <button class="webext-draw-shape-btn" data-shape="pentagon" title="Ngũ giác">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <path d="M12 2L22 9L18 21H6L2 9L12 2z"/>
                     </svg>
                 </button>
                 <button class="webext-draw-shape-btn" data-shape="ellipse" title="Hình elip">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <ellipse cx="12" cy="12" rx="10" ry="6"/>
                     </svg>
                 </button>
                 <button class="webext-draw-shape-btn" data-shape="cross" title="Dấu cộng">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <line x1="12" y1="5" x2="12" y2="19"/>
                         <line x1="5" y1="12" x2="19" y2="12"/>
                     </svg>
                 </button>
                 <button class="webext-draw-shape-btn" data-shape="highlight" title="Highlight">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <rect x="3" y="10" width="18" height="6" rx="1" fill="currentColor" opacity="0.3"/>
                         <line x1="3" y1="13" x2="21" y2="13"/>
                     </svg>
@@ -449,8 +449,8 @@ class WebDrawingExtension {
             </div>
         `;
         document.body.appendChild(shapesPopup);
-        
-        
+
+
         // Don't create toggle button anymore - toolbar shows directly
         // this.createToggleButton();
     }
@@ -468,20 +468,20 @@ class WebDrawingExtension {
         const dragHandle = document.querySelector('.webext-drag-handle');
 
         closeBtn.addEventListener('click', () => this.hideExtension());
-        
+
         // Setup drag functionality
         if (dragHandle) {
             dragHandle.addEventListener('mousedown', (e) => this.startDragging(e));
         }
-        
+
         document.addEventListener('mousemove', (e) => this.drag(e));
         document.addEventListener('mouseup', () => this.stopDragging());
-        
+
         toolButtons.forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const button = e.currentTarget;
                 const tool = button.dataset.tool;
-                
+
                 // Handle special tools
                 if (tool === 'color') {
                     this.togglePopup('color', button);
@@ -493,19 +493,19 @@ class WebDrawingExtension {
                     this.togglePopup('shapes', button);
                     return;
                 }
-                
+
                 // Handle picker tool - open EyeDropper immediately
                 if (tool === 'picker') {
                     this.pickColorImmediate();
                     return;
                 }
-                
+
                 // Handle clear all tool
                 if (tool === 'clearall') {
                     this.clearCanvas();
                     return;
                 }
-                
+
                 // Handle drawing tools
                 toolButtons.forEach(b => b.classList.remove('active'));
                 button.classList.add('active');
@@ -514,7 +514,7 @@ class WebDrawingExtension {
                 this.closeAllPopups();
             });
         });
-        
+
         quickColors.forEach(item => {
             item.addEventListener('click', (e) => {
                 const color = e.target.dataset.color;
@@ -529,18 +529,18 @@ class WebDrawingExtension {
                 }
             });
         });
-        
+
         customColorInput.addEventListener('change', (e) => {
             this.currentColor = e.target.value;
             // Remove active from all quick colors when custom color is selected
             quickColors.forEach(c => c.classList.remove('active'));
         });
-        
+
         lineWidthSlider.addEventListener('input', (e) => {
             this.lineWidth = e.target.value;
             sizeValue.textContent = e.target.value;
         });
-        
+
         // Shape buttons in popup
         const shapeButtons = document.querySelectorAll('.webext-draw-shape-btn');
         shapeButtons.forEach(btn => {
@@ -548,20 +548,20 @@ class WebDrawingExtension {
                 const shape = e.currentTarget.dataset.shape;
                 this.drawingMode = shape;
                 this.updateCursor();
-                
+
                 // Update active state
                 shapeButtons.forEach(b => b.classList.remove('active'));
                 e.currentTarget.classList.add('active');
-                
+
                 // Update main shapes button to show active
                 const shapesBtn = document.querySelector('.webext-draw-tool-btn[data-tool="shapes"]');
                 toolButtons.forEach(b => b.classList.remove('active'));
                 shapesBtn.classList.add('active');
-                
+
                 this.closeAllPopups();
             });
         });
-        
+
         // Fill color checkbox (in color popup)
         const fillEnabledCheckbox = document.getElementById('webext-fill-enabled');
         fillEnabledCheckbox.addEventListener('change', (e) => {
@@ -571,26 +571,26 @@ class WebDrawingExtension {
                 this.fillColor = this.currentColor;
             }
         });
-        
+
         // Close popups when clicking outside (except drag handle and during/after dragging)
         document.addEventListener('click', (e) => {
             // Don't close popups when clicking on drag handle or just finished dragging
             if (e.target.closest('.webext-drag-handle') || this.justFinishedDragging || this.isDragging) {
                 return;
             }
-            
-            if (!e.target.closest('.webext-draw-tool-btn[data-tool="color"]') && 
+
+            if (!e.target.closest('.webext-draw-tool-btn[data-tool="color"]') &&
                 !e.target.closest('#webext-color-popup')) {
                 colorPopup.style.display = 'none';
                 document.querySelector('.webext-draw-tool-btn[data-tool="color"]')?.classList.remove('popup-active');
             }
-            if (!e.target.closest('.webext-draw-tool-btn[data-tool="size"]') && 
+            if (!e.target.closest('.webext-draw-tool-btn[data-tool="size"]') &&
                 !e.target.closest('#webext-size-popup')) {
                 sizePopup.style.display = 'none';
                 document.querySelector('.webext-draw-tool-btn[data-tool="size"]')?.classList.remove('popup-active');
             }
             const shapesPopupEl = document.getElementById('webext-shapes-popup');
-            if (!e.target.closest('.webext-draw-tool-btn[data-tool="shapes"]') && 
+            if (!e.target.closest('.webext-draw-tool-btn[data-tool="shapes"]') &&
                 !e.target.closest('#webext-shapes-popup')) {
                 shapesPopupEl.style.display = 'none';
                 document.querySelector('.webext-draw-tool-btn[data-tool="shapes"]')?.classList.remove('popup-active');
@@ -611,7 +611,7 @@ class WebDrawingExtension {
                 e.preventDefault();
             }
         }, { passive: false });
-        
+
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 this.disableDrawing();
@@ -626,7 +626,7 @@ class WebDrawingExtension {
                 return false;
             }
         }, { capture: true });
-        
+
         document.addEventListener('keyup', (e) => {
             if (e.code === 'Space' && this.isSpacePressed) {
                 e.preventDefault();
@@ -656,13 +656,13 @@ class WebDrawingExtension {
 
     startDrawing(e) {
         if (!this.isEnabled) return;
-        
+
         this.isDrawing = true;
         this.lastX = e.clientX;
         this.lastY = e.clientY;
         this.shapeStartX = e.clientX;
         this.shapeStartY = e.clientY;
-        
+
         if (this.drawingMode === 'move') {
             // Check if clicking on resize/rotate handle of already selected shape
             if (this.selectedShape) {
@@ -689,7 +689,7 @@ class WebDrawingExtension {
                     return;
                 }
             }
-            
+
             // Select shape or deselect if clicking empty area
             const clickedShape = this.getShapeAtPoint(e.clientX, e.clientY);
             if (clickedShape) {
@@ -712,7 +712,7 @@ class WebDrawingExtension {
             this.isDrawing = false;
         } else if (this.drawingMode === 'pen') {
             // Start new path
-            this.currentPath = [{x: e.clientX, y: e.clientY}];
+            this.currentPath = [{ x: e.clientX, y: e.clientY }];
         } else if (this.drawingMode !== 'pen' && this.drawingMode !== 'eraser') {
             this.svgOverlay.style.pointerEvents = 'auto';
         }
@@ -730,9 +730,9 @@ class WebDrawingExtension {
             this.ctx.lineCap = 'round';
             this.ctx.lineJoin = 'round';
             this.ctx.stroke();
-            
+
             // Add point to current path
-            this.currentPath.push({x: e.clientX, y: e.clientY});
+            this.currentPath.push({ x: e.clientX, y: e.clientY });
 
             this.lastX = e.clientX;
             this.lastY = e.clientY;
@@ -757,31 +757,31 @@ class WebDrawingExtension {
                 this.redrawAllShapes();
                 return;
             }
-            
+
             // Handle resizing
             if (this.isResizing && this.selectedShape && this.originalShape) {
                 this.resizeShape(e.clientX, e.clientY);
                 this.redrawAllShapes();
                 return;
             }
-            
+
             if (this.selectedShape && this.originalShape) {
                 // Move individual shape
                 const deltaX = e.clientX - this.moveStartX;
                 const deltaY = e.clientY - this.moveStartY;
-                
+
                 if (this.selectedShape.type === 'path') {
                     this.selectedShape.points = this.originalShape.points.map(point => ({
                         x: point.x + deltaX,
                         y: point.y + deltaY
                     }));
-                } else if (this.selectedShape.type === 'text' || 
-                    this.selectedShape.type === 'rect' || 
+                } else if (this.selectedShape.type === 'text' ||
+                    this.selectedShape.type === 'rect' ||
                     this.selectedShape.type === 'circle') {
                     this.selectedShape.x = this.originalShape.x + deltaX;
                     this.selectedShape.y = this.originalShape.y + deltaY;
-                } else if (this.selectedShape.type === 'line' || 
-                          this.selectedShape.type === 'arrow') {
+                } else if (this.selectedShape.type === 'line' ||
+                    this.selectedShape.type === 'arrow') {
                     this.selectedShape.x1 = this.originalShape.x1 + deltaX;
                     this.selectedShape.y1 = this.originalShape.y1 + deltaY;
                     this.selectedShape.x2 = this.originalShape.x2 + deltaX;
@@ -803,7 +803,7 @@ class WebDrawingExtension {
                     this.selectedShape.cx = this.originalShape.cx + deltaX;
                     this.selectedShape.cy = this.originalShape.cy + deltaY;
                 }
-                
+
                 this.redrawAllShapes();
             }
         } else {
@@ -898,7 +898,7 @@ class WebDrawingExtension {
 
             case 'arrow':
                 shape = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-                
+
                 // Arrow line
                 const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                 line.setAttribute('x1', this.shapeStartX);
@@ -909,12 +909,12 @@ class WebDrawingExtension {
                 line.setAttribute('stroke-width', strokeWidth);
                 line.setAttribute('stroke-linecap', 'round');
                 shape.appendChild(line);
-                
+
                 // Arrow head
                 const angle = Math.atan2(currentY - this.shapeStartY, currentX - this.shapeStartX);
                 const arrowLength = 15;
                 const arrowAngle = Math.PI / 6;
-                
+
                 const arrowHead1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                 arrowHead1.setAttribute('x1', currentX);
                 arrowHead1.setAttribute('y1', currentY);
@@ -924,7 +924,7 @@ class WebDrawingExtension {
                 arrowHead1.setAttribute('stroke-width', strokeWidth);
                 arrowHead1.setAttribute('stroke-linecap', 'round');
                 shape.appendChild(arrowHead1);
-                
+
                 const arrowHead2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                 arrowHead2.setAttribute('x1', currentX);
                 arrowHead2.setAttribute('y1', currentY);
@@ -1022,7 +1022,7 @@ class WebDrawingExtension {
                 const crCenterY = (this.shapeStartY + currentY) / 2;
                 const crWidth = Math.abs(currentX - this.shapeStartX) / 2;
                 const crHeight = Math.abs(currentY - this.shapeStartY) / 2;
-                
+
                 const vLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                 vLine.setAttribute('x1', crCenterX);
                 vLine.setAttribute('y1', crCenterY - crHeight);
@@ -1032,7 +1032,7 @@ class WebDrawingExtension {
                 vLine.setAttribute('stroke-width', strokeWidth);
                 vLine.setAttribute('stroke-linecap', 'round');
                 shape.appendChild(vLine);
-                
+
                 const hLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                 hLine.setAttribute('x1', crCenterX - crWidth);
                 hLine.setAttribute('y1', crCenterY);
@@ -1070,7 +1070,7 @@ class WebDrawingExtension {
                 }
             }
         }
-        
+
         // Handle move mode - reset cursor
         if (this.drawingMode === 'move') {
             if (this.isSpacePressed) {
@@ -1083,13 +1083,13 @@ class WebDrawingExtension {
                 this.redrawAllShapes();
             }
         }
-        
+
         // Reset resize and rotation state
         this.isResizing = false;
         this.isRotating = false;
         this.resizeHandle = null;
         this.originalBounds = null;
-        
+
         this.isDrawing = false;
         // Don't deselect shape in move mode - keep it selected
         if (this.drawingMode !== 'move') {
@@ -1105,7 +1105,7 @@ class WebDrawingExtension {
             const img = new Image();
             const blob = new Blob([svgData], { type: 'image/svg+xml' });
             const url = URL.createObjectURL(blob);
-            
+
             img.onload = () => {
                 try {
                     this.ctx.drawImage(img, 0, 0);
@@ -1120,13 +1120,13 @@ class WebDrawingExtension {
                     URL.revokeObjectURL(url);
                 }
             };
-            
+
             img.onerror = () => {
                 console.error('Failed to load SVG image');
                 this.fallbackDirectCanvasDrawing();
                 URL.revokeObjectURL(url);
             };
-            
+
             img.src = url;
         } catch (error) {
             console.error('Error in SVG to canvas conversion:', error);
@@ -1138,12 +1138,12 @@ class WebDrawingExtension {
         // Fallback: draw the last shape directly to canvas
         const shape = this.svgOverlay.querySelector('rect, circle, line, g, polygon');
         if (!shape) return;
-        
+
         this.ctx.strokeStyle = this.currentColor;
         this.ctx.lineWidth = this.lineWidth;
         this.ctx.lineCap = 'round';
         this.ctx.lineJoin = 'round';
-        
+
         if (shape.tagName === 'rect') {
             const x = parseFloat(shape.getAttribute('x'));
             const y = parseFloat(shape.getAttribute('y'));
@@ -1193,7 +1193,7 @@ class WebDrawingExtension {
                 this.ctx.stroke();
             });
         }
-        
+
         // Clear SVG
         while (this.svgOverlay.firstChild) {
             this.svgOverlay.removeChild(this.svgOverlay.firstChild);
@@ -1215,13 +1215,13 @@ class WebDrawingExtension {
                 const eyeDropper = new EyeDropper();
                 const result = await eyeDropper.open();
                 const hexColor = result.sRGBHex;
-                
+
                 // Copy to clipboard
                 await navigator.clipboard.writeText(hexColor);
-                
+
                 // Show notification
                 this.showColorNotification(hexColor);
-                
+
                 // Set as current color
                 this.currentColor = hexColor;
             } else {
@@ -1258,9 +1258,9 @@ class WebDrawingExtension {
             transition: opacity 0.3s ease;
         `;
         notification.textContent = `Màu sắc ${color} đã được copy!`;
-        
+
         document.body.appendChild(notification);
-        
+
         setTimeout(() => {
             notification.style.opacity = '0';
             setTimeout(() => notification.remove(), 300);
@@ -1272,13 +1272,13 @@ class WebDrawingExtension {
         const fontFamily = 'Nunito, Arial, sans-serif';
         const fontWeight = '700';
         const fontString = `${fontWeight} ${fontSize}px ${fontFamily}`;
-        
+
         this.ctx.font = fontString;
         this.ctx.fillStyle = this.currentColor;
         this.ctx.textBaseline = 'top';
         this.ctx.fillText(text, x, y);
         this.ctx.textBaseline = 'alphabetic';
-        
+
         // Save text shape
         this.shapes.push({
             type: 'text',
@@ -1295,11 +1295,11 @@ class WebDrawingExtension {
     showTextInput(x, y) {
         // Temporarily disable canvas pointer events
         this.canvas.style.pointerEvents = 'none';
-        
+
         const fontSize = 16;
         const fontFamily = 'Nunito, Arial, sans-serif';
         const fontWeight = '700';
-        
+
         const inputElement = document.createElement('input');
         inputElement.type = 'text';
         inputElement.id = 'webext-text-input';
@@ -1323,24 +1323,24 @@ class WebDrawingExtension {
             line-height: ${fontSize}px;
             caret-color: ${this.currentColor};
         `;
-        
+
         // Auto-expand input as user types
         inputElement.addEventListener('input', () => {
             inputElement.style.width = Math.max(50, inputElement.scrollWidth) + 'px';
         });
-        
+
         document.body.appendChild(inputElement);
-        
+
         // Use setTimeout to ensure input is ready before focusing
         setTimeout(() => {
             inputElement.focus();
         }, 10);
-        
+
         let isFinished = false;
         const finishText = () => {
             if (isFinished) return;
             isFinished = true;
-            
+
             const text = inputElement.value.trim();
             if (text) {
                 const fontString = `${fontWeight} ${fontSize}px ${fontFamily}`;
@@ -1349,7 +1349,7 @@ class WebDrawingExtension {
                 this.ctx.textBaseline = 'top';
                 this.ctx.fillText(text, x, y);
                 this.ctx.textBaseline = 'alphabetic';
-                
+
                 // Save text shape
                 this.shapes.push({
                     type: 'text',
@@ -1367,7 +1367,7 @@ class WebDrawingExtension {
             // Re-enable canvas pointer events
             this.canvas.style.pointerEvents = 'auto';
         };
-        
+
         inputElement.addEventListener('blur', () => {
             // Delay to allow Enter key to work
             setTimeout(finishText, 100);
@@ -1387,7 +1387,7 @@ class WebDrawingExtension {
     createShapeFromSVG() {
         const shape = this.svgOverlay.querySelector('rect, circle, line, g, polygon, path, ellipse');
         if (!shape) return null;
-        
+
         const shapeData = {
             type: shape.tagName,
             color: this.currentColor,
@@ -1395,7 +1395,7 @@ class WebDrawingExtension {
             fillColor: this.fillEnabled ? this.fillColor : 'none',
             fillEnabled: this.fillEnabled
         };
-        
+
         if (shape.tagName === 'rect') {
             shapeData.x = parseFloat(shape.getAttribute('x'));
             shapeData.y = parseFloat(shape.getAttribute('y'));
@@ -1446,7 +1446,7 @@ class WebDrawingExtension {
             shapeData.rx = parseFloat(shape.getAttribute('rx'));
             shapeData.ry = parseFloat(shape.getAttribute('ry'));
         }
-        
+
         return shapeData;
     }
 
@@ -1454,7 +1454,7 @@ class WebDrawingExtension {
         // Check shapes in reverse order (top to bottom)
         for (let i = this.shapes.length - 1; i >= 0; i--) {
             const shape = this.shapes[i];
-            
+
             if (shape.type === 'path') {
                 // Check if point is near any segment of the path
                 for (let j = 0; j < shape.points.length - 1; j++) {
@@ -1538,13 +1538,13 @@ class WebDrawingExtension {
         const dot = A * C + B * D;
         const lenSq = C * C + D * D;
         let param = -1;
-        
+
         if (lenSq !== 0) {
             param = dot / lenSq;
         }
-        
+
         let xx, yy;
-        
+
         if (param < 0) {
             xx = x1;
             yy = y1;
@@ -1555,7 +1555,7 @@ class WebDrawingExtension {
             xx = x1 + param * C;
             yy = y1 + param * D;
         }
-        
+
         const dx = px - xx;
         const dy = py - yy;
         return Math.sqrt(dx * dx + dy * dy);
@@ -1567,10 +1567,10 @@ class WebDrawingExtension {
         const centerY = bounds.y + bounds.height / 2;
         const currentAngle = Math.atan2(mouseY - centerY, mouseX - centerX);
         const deltaAngle = currentAngle - this.rotateStartAngle;
-        
+
         const shape = this.selectedShape;
         const origShape = this.originalShape;
-        
+
         // Helper function to rotate a point around center
         const rotatePoint = (px, py) => {
             const cos = Math.cos(deltaAngle);
@@ -1582,7 +1582,7 @@ class WebDrawingExtension {
                 y: centerY + dx * sin + dy * cos
             };
         };
-        
+
         if (shape.type === 'rect') {
             // Convert rect to polygon for rotation
             const corners = [
@@ -1658,12 +1658,12 @@ class WebDrawingExtension {
         const orig = this.originalBounds;
         const shape = this.selectedShape;
         const origShape = this.originalShape;
-        
+
         let newX = orig.x;
         let newY = orig.y;
         let newWidth = orig.width;
         let newHeight = orig.height;
-        
+
         // Calculate new bounds based on handle
         if (handle.includes('w')) {
             newX = orig.x + deltaX;
@@ -1679,11 +1679,11 @@ class WebDrawingExtension {
         if (handle.includes('s')) {
             newHeight = orig.height + deltaY;
         }
-        
+
         // Ensure minimum size
         if (newWidth < 10) { newWidth = 10; newX = orig.x + orig.width - 10; }
         if (newHeight < 10) { newHeight = 10; newY = orig.y + orig.height - 10; }
-        
+
         // Apply to shape based on type
         if (shape.type === 'rect' || shape.type === 'highlight') {
             shape.x = newX;
@@ -1743,7 +1743,7 @@ class WebDrawingExtension {
 
     getShapeBounds(shape) {
         let bounds = { x: 0, y: 0, width: 0, height: 0 };
-        
+
         if (shape.type === 'rect' || shape.type === 'highlight') {
             bounds = { x: shape.x, y: shape.y, width: shape.width, height: shape.height };
         } else if (shape.type === 'circle') {
@@ -1778,7 +1778,7 @@ class WebDrawingExtension {
             const minY = Math.min(...ys);
             bounds = { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
         }
-        
+
         return bounds;
     }
 
@@ -1801,7 +1801,7 @@ class WebDrawingExtension {
     getHandleAtPoint(x, y, bounds) {
         const handles = this.getResizeHandles(bounds);
         const handleSize = 12;
-        
+
         // Check rotate handle first (circle) with larger hit area
         const rotateHandle = handles.rotate;
         const rotateCenterX = rotateHandle.x + handleSize / 2;
@@ -1810,7 +1810,7 @@ class WebDrawingExtension {
         if (distToRotate <= handleSize) { // Larger hit area for rotate
             return 'rotate';
         }
-        
+
         // Check resize handles (squares)
         for (const [key, handle] of Object.entries(handles)) {
             if (key === 'rotate') continue;
@@ -1825,14 +1825,14 @@ class WebDrawingExtension {
     drawResizeHandles(bounds) {
         const handles = this.getResizeHandles(bounds);
         const handleSize = 12;
-        
+
         // Draw selection border
         this.ctx.strokeStyle = '#007bff';
         this.ctx.lineWidth = 1;
         this.ctx.setLineDash([5, 5]);
         this.ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
         this.ctx.setLineDash([]);
-        
+
         // Draw line to rotate handle
         this.ctx.beginPath();
         this.ctx.moveTo(bounds.x + bounds.width / 2, bounds.y);
@@ -1840,12 +1840,12 @@ class WebDrawingExtension {
         this.ctx.strokeStyle = '#007bff';
         this.ctx.lineWidth = 1;
         this.ctx.stroke();
-        
+
         // Draw handles
         this.ctx.fillStyle = '#ffffff';
         this.ctx.strokeStyle = '#007bff';
         this.ctx.lineWidth = 2;
-        
+
         for (const [key, handle] of Object.entries(handles)) {
             if (key === 'rotate') {
                 // Draw rotate handle as circle
@@ -1863,24 +1863,24 @@ class WebDrawingExtension {
     updateResizeCursor(e) {
         if (!this.isEnabled || this.isDrawing) return;
         if (this.drawingMode !== 'move') return;
-        
+
         if (this.selectedShape) {
             const bounds = this.getShapeBounds(this.selectedShape);
             const handle = this.getHandleAtPoint(e.clientX, e.clientY, bounds);
-            
+
             if (handle) {
                 const handles = this.getResizeHandles(bounds);
                 this.canvas.style.cursor = handles[handle].cursor;
                 return;
             }
-            
+
             // Check if over the selected shape
             if (this.getShapeAtPoint(e.clientX, e.clientY) === this.selectedShape) {
                 this.canvas.style.cursor = 'move';
                 return;
             }
         }
-        
+
         // Check if hovering over any shape
         const hoverShape = this.getShapeAtPoint(e.clientX, e.clientY);
         if (hoverShape) {
@@ -1894,14 +1894,14 @@ class WebDrawingExtension {
     redrawAllShapes() {
         // Clear canvas
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        
+
         // Redraw all shapes
         this.shapes.forEach(shape => {
             this.ctx.strokeStyle = shape.color;
             this.ctx.lineWidth = shape.strokeWidth;
             this.ctx.lineCap = 'round';
             this.ctx.lineJoin = 'round';
-            
+
             if (shape.type === 'path') {
                 // Draw pen path
                 this.ctx.beginPath();
@@ -1946,22 +1946,22 @@ class WebDrawingExtension {
                 this.ctx.moveTo(shape.x1, shape.y1);
                 this.ctx.lineTo(shape.x2, shape.y2);
                 this.ctx.stroke();
-                
+
                 // Draw arrow head
                 const angle = Math.atan2(shape.y2 - shape.y1, shape.x2 - shape.x1);
                 const arrowLength = 15;
                 const arrowAngle = Math.PI / 6;
-                
+
                 this.ctx.beginPath();
                 this.ctx.moveTo(shape.x2, shape.y2);
-                this.ctx.lineTo(shape.x2 - arrowLength * Math.cos(angle - arrowAngle), 
-                               shape.y2 - arrowLength * Math.sin(angle - arrowAngle));
+                this.ctx.lineTo(shape.x2 - arrowLength * Math.cos(angle - arrowAngle),
+                    shape.y2 - arrowLength * Math.sin(angle - arrowAngle));
                 this.ctx.stroke();
-                
+
                 this.ctx.beginPath();
                 this.ctx.moveTo(shape.x2, shape.y2);
-                this.ctx.lineTo(shape.x2 - arrowLength * Math.cos(angle + arrowAngle), 
-                               shape.y2 - arrowLength * Math.sin(angle + arrowAngle));
+                this.ctx.lineTo(shape.x2 - arrowLength * Math.cos(angle + arrowAngle),
+                    shape.y2 - arrowLength * Math.sin(angle + arrowAngle));
                 this.ctx.stroke();
             } else if (shape.type === 'polygon') {
                 const points = shape.points.split(' ');
@@ -2024,7 +2024,7 @@ class WebDrawingExtension {
                 this.ctx.stroke();
             }
         });
-        
+
         // Draw resize handles if a shape is selected
         if (this.selectedShape && this.drawingMode === 'move') {
             const bounds = this.getShapeBounds(this.selectedShape);
@@ -2036,27 +2036,27 @@ class WebDrawingExtension {
         const colorPopup = document.getElementById('webext-color-popup');
         const sizePopup = document.getElementById('webext-size-popup');
         const shapesPopup = document.getElementById('webext-shapes-popup');
-        
+
         // Check if the popup is already open
         const isPopupOpen = (type === 'color' && colorPopup.style.display === 'block') ||
-                           (type === 'size' && sizePopup.style.display === 'block') ||
-                           (type === 'shapes' && shapesPopup.style.display === 'block');
-        
+            (type === 'size' && sizePopup.style.display === 'block') ||
+            (type === 'shapes' && shapesPopup.style.display === 'block');
+
         // Close all popups first
         this.closeAllPopups();
-        
+
         // If popup was already open, don't reopen it (toggle behavior)
         if (isPopupOpen) {
             return;
         }
-        
+
         // Add active state to the button
         button.classList.add('popup-active');
-        
+
         // Get button position
         const buttonRect = button.getBoundingClientRect();
         const isToolbarLeft = this.uiElement.classList.contains('toolbar-left');
-        
+
         const positionPopup = (popup) => {
             if (isToolbarLeft) {
                 popup.style.left = (buttonRect.right + 10) + 'px';
@@ -2070,7 +2070,7 @@ class WebDrawingExtension {
             popup.style.transform = 'none';
             popup.style.display = 'block';
         };
-        
+
         if (type === 'color') {
             positionPopup(colorPopup);
         } else if (type === 'size') {
@@ -2079,53 +2079,53 @@ class WebDrawingExtension {
             positionPopup(shapesPopup);
         }
     }
-    
+
     startDragging(e) {
         this.isDragging = true;
         this.dragStartX = e.clientX;
         this.dragStartY = e.clientY;
-        
+
         const rect = this.uiElement.getBoundingClientRect();
         this.toolbarInitialX = rect.left;
         this.toolbarInitialY = rect.top;
-        
+
         // Add dragging class
         this.uiElement.classList.add('dragging');
-        
+
         // Change cursor
         document.body.style.cursor = 'move';
         e.preventDefault();
     }
-    
+
     drag(e) {
         if (!this.isDragging) return;
-        
+
         const deltaX = e.clientX - this.dragStartX;
         const deltaY = e.clientY - this.dragStartY;
-        
+
         const newX = this.toolbarInitialX + deltaX;
         const newY = this.toolbarInitialY + deltaY;
-        
+
         // Keep toolbar within viewport bounds
         const maxX = window.innerWidth - this.uiElement.offsetWidth;
         const maxY = window.innerHeight - this.uiElement.offsetHeight;
-        
+
         const finalX = Math.max(0, Math.min(newX, maxX));
         const finalY = Math.max(0, Math.min(newY, maxY));
-        
+
         // Update toolbar position
         this.uiElement.style.right = 'auto';
         this.uiElement.style.left = finalX + 'px';
         this.uiElement.style.top = finalY + 'px';
         this.uiElement.style.transform = 'none';
-        
+
         // Update toolbar side class for tooltip/popup positioning
         this.updateToolbarSideClass(finalX);
-        
+
         // Update popup positions if they're open
         this.updatePopupPositions();
     }
-    
+
     stopDragging() {
         if (this.isDragging) {
             this.isDragging = false;
@@ -2133,18 +2133,18 @@ class WebDrawingExtension {
             document.body.style.cursor = 'auto';
             // Remove dragging class
             this.uiElement.classList.remove('dragging');
-            
+
             // Update toolbar side class one final time
             const rect = this.uiElement.getBoundingClientRect();
             this.updateToolbarSideClass(rect.left);
-            
+
             // Reset flag after a short delay to prevent click from closing popup
             setTimeout(() => {
                 this.justFinishedDragging = false;
             }, 100);
         }
     }
-    
+
     updateToolbarSideClass(toolbarX) {
         // Check if toolbar is on the left half of the screen
         if (toolbarX < window.innerWidth / 2) {
@@ -2153,17 +2153,19 @@ class WebDrawingExtension {
             this.uiElement.classList.remove('toolbar-left');
         }
     }
-    
+
     updatePopupPositions() {
         const colorPopup = document.getElementById('webext-color-popup');
         const sizePopup = document.getElementById('webext-size-popup');
+        const shapesPopup = document.getElementById('webext-shapes-popup');
         const colorBtn = document.querySelector('.webext-draw-tool-btn[data-tool="color"]');
         const sizeBtn = document.querySelector('.webext-draw-tool-btn[data-tool="size"]');
+        const shapesBtn = document.querySelector('.webext-draw-tool-btn[data-tool="shapes"]');
         const isToolbarLeft = this.uiElement.classList.contains('toolbar-left');
-        
+
         if (colorPopup && colorPopup.style.display === 'block' && colorBtn) {
             const buttonRect = colorBtn.getBoundingClientRect();
-            
+
             if (isToolbarLeft) {
                 colorPopup.style.left = (buttonRect.right + 10) + 'px';
                 colorPopup.style.right = 'auto';
@@ -2175,10 +2177,10 @@ class WebDrawingExtension {
             colorPopup.style.bottom = 'auto';
             colorPopup.style.transform = 'none';
         }
-        
+
         if (sizePopup && sizePopup.style.display === 'block' && sizeBtn) {
             const buttonRect = sizeBtn.getBoundingClientRect();
-            
+
             if (isToolbarLeft) {
                 sizePopup.style.left = (buttonRect.right + 10) + 'px';
                 sizePopup.style.right = 'auto';
@@ -2190,8 +2192,23 @@ class WebDrawingExtension {
             sizePopup.style.bottom = 'auto';
             sizePopup.style.transform = 'none';
         }
+
+        if (shapesPopup && shapesPopup.style.display === 'block' && shapesBtn) {
+            const buttonRect = shapesBtn.getBoundingClientRect();
+
+            if (isToolbarLeft) {
+                shapesPopup.style.left = (buttonRect.right + 10) + 'px';
+                shapesPopup.style.right = 'auto';
+            } else {
+                shapesPopup.style.right = (window.innerWidth - buttonRect.left + 10) + 'px';
+                shapesPopup.style.left = 'auto';
+            }
+            shapesPopup.style.top = buttonRect.top + 'px';
+            shapesPopup.style.bottom = 'auto';
+            shapesPopup.style.transform = 'none';
+        }
     }
-    
+
     closeAllPopups() {
         const colorPopup = document.getElementById('webext-color-popup');
         const sizePopup = document.getElementById('webext-size-popup');
@@ -2215,7 +2232,7 @@ class WebDrawingExtension {
             this.canvas.style.cursor = 'default';
             return;
         }
-        
+
         switch (this.drawingMode) {
             case 'pen':
                 this.canvas.style.cursor = 'crosshair';
