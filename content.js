@@ -21,12 +21,37 @@ class WebDrawingExtension {
         this.moveOffsetY = 0;
         this.originalShape = null; // Store original shape position for delta calculation
         this.currentPath = []; // Store current pen drawing path
-        this.erasedAreas = []; // Store erased areas to track which shapes are removed
         this.isDragging = false; // Track toolbar dragging state
+        this.justFinishedDragging = false; // Flag to prevent popup close after drag
         this.dragStartX = 0;
         this.dragStartY = 0;
         this.toolbarInitialX = 0;
         this.toolbarInitialY = 0;
+        
+        // Space key panning
+        this.isSpacePressed = false;
+        this.isPanning = false;
+        this.panStartX = 0;
+        this.panStartY = 0;
+        this.previousDrawingMode = 'pen';
+        
+        // Canvas state for eraser persistence
+        this.canvasImageData = null;
+        
+        // Resize handles
+        this.isResizing = false;
+        this.resizeHandle = null; // 'nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'rotate'
+        this.resizeStartX = 0;
+        this.resizeStartY = 0;
+        this.originalBounds = null;
+        
+        // Rotation
+        this.isRotating = false;
+        this.rotateStartAngle = 0;
+        
+        // Fill color
+        this.fillColor = 'transparent';
+        this.fillEnabled = false;
         
         this.setupMessageListener();
     }
@@ -110,6 +135,9 @@ class WebDrawingExtension {
         this.showToolbar(); // Show toolbar directly instead of toggle button
         this.enableDrawing(); // Enable drawing by default
         
+        // Default: toolbar is on the right, so popup opens on the left
+        // No class needed - popup will open to the left by default
+        
         // Set pen tool as active by default
         const penTool = document.querySelector('.webext-draw-tool-btn[data-tool="pen"]');
         if (penTool) {
@@ -140,6 +168,16 @@ class WebDrawingExtension {
         const existingUI = document.getElementById('webext-draw-ui');
         if (existingUI) {
             existingUI.remove();
+        }
+        
+        // Remove existing popups if present
+        const existingColorPopup = document.getElementById('webext-color-popup');
+        if (existingColorPopup) {
+            existingColorPopup.remove();
+        }
+        const existingSizePopup = document.getElementById('webext-size-popup');
+        if (existingSizePopup) {
+            existingSizePopup.remove();
         }
     }
 
@@ -181,10 +219,21 @@ class WebDrawingExtension {
     }
 
     resizeCanvas() {
-        const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
-        this.ctx.putImageData(imageData, 0, 0);
+        const dpr = window.devicePixelRatio || 1;
+        
+        // Set canvas size accounting for device pixel ratio
+        this.canvas.width = window.innerWidth * dpr;
+        this.canvas.height = window.innerHeight * dpr;
+        
+        // Scale canvas CSS size to match window
+        this.canvas.style.width = window.innerWidth + 'px';
+        this.canvas.style.height = window.innerHeight + 'px';
+        
+        // Scale context to match device pixel ratio
+        this.ctx.scale(dpr, dpr);
+        
+        // Redraw all shapes after resize
+        this.redrawAllShapes();
     }
 
     createUI() {
@@ -201,38 +250,29 @@ class WebDrawingExtension {
                     </div>
                 </div>
                 <div class="webext-draw-toolbar-content">
+                    <!-- Drawing Tools -->
                     <button class="webext-draw-tool-btn" data-tool="pen" title="Vẽ tự do (Bút)">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M12 19l7-7 3 3-7 7-3-3z"/>
                             <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
                         </svg>
                     </button>
-                    <button class="webext-draw-tool-btn" data-tool="rectangle" title="Vẽ hình chữ nhật">
+                    <button class="webext-draw-tool-btn" data-tool="text" title="Viết chữ">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <polyline points="4 7 4 4 20 4 20 7"/>
+                            <line x1="9" y1="20" x2="15" y2="20"/>
+                            <line x1="12" y1="4" x2="12" y2="20"/>
                         </svg>
                     </button>
-                    <button class="webext-draw-tool-btn" data-tool="circle" title="Vẽ hình tròn">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="10"/>
+                    <!-- Shapes (grouped) -->
+                    <button class="webext-draw-tool-btn" data-tool="shapes" title="Hình dạng">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"/>
+                            <rect x="3" y="14" width="7" height="7" rx="1"/>
+                            <circle cx="17.5" cy="17.5" r="3.5"/>
                         </svg>
                     </button>
-                    <button class="webext-draw-tool-btn" data-tool="triangle" title="Vẽ hình tam giác">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 2L2 20h20L12 2z"/>
-                        </svg>
-                    </button>
-                    <button class="webext-draw-tool-btn" data-tool="star" title="Vẽ ngôi sao">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-                        </svg>
-                    </button>
-                    <button class="webext-draw-tool-btn" data-tool="picker" title="Lấy màu từ màn hình">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M11 17l1 5 1.5-2 1.5 2 1-5"/>
-                            <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
-                        </svg>
-                    </button>
+                    <!-- Edit Tools -->
                     <button class="webext-draw-tool-btn" data-tool="move" title="Di chuyển hình đã vẽ">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="5 9 2 12 5 15"/>
@@ -243,35 +283,40 @@ class WebDrawingExtension {
                             <line x1="12" y1="2" x2="12" y2="22"/>
                         </svg>
                     </button>
-                    <button class="webext-draw-tool-btn" data-tool="arrow" title="Vẽ mũi tên">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="5" y1="12" x2="19" y2="12"/>
-                            <polyline points="12 5 19 12 12 19"/>
-                        </svg>
-                    </button>
-                    <button class="webext-draw-tool-btn" data-tool="line" title="Vẽ đường thẳng">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="5" y1="19" x2="19" y2="5"/>
-                        </svg>
-                    </button>
                     <button class="webext-draw-tool-btn" data-tool="eraser" title="Tẩy (Xóa)">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M20 20H7l-4-4a1 1 0 0 1 0-1.414l9-9a1 1 0 0 1 1.414 0l7 7a1 1 0 0 1 0 1.414l-4 4"/>
                             <line x1="11" y1="11" x2="17" y2="17"/>
                         </svg>
                     </button>
+                    <!-- Settings -->
                     <button class="webext-draw-tool-btn" data-tool="color" title="Chọn màu vẽ">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>
-                            <line x1="12" y1="22" x2="12" y2="18"/>
-                            <line x1="8" y1="22" x2="16" y2="22"/>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M19 12H2"/>
+                            <path d="M21.145 18.38A3.34 3.34 0 0 1 20 16.5a3.3 3.3 0 0 1-1.145 1.88c-.575.46-.855 1.02-.855 1.595A2 2 0 0 0 20 22a2 2 0 0 0 2-2.025c0-.58-.285-1.13-.855-1.595"/>
+                            <path d="m6 2 5 5"/>
+                            <path d="m8.5 4.5 2.148-2.148a1.205 1.205 0 0 1 1.704 0l7.296 7.296a1.205 1.205 0 0 1 0 1.704l-7.592 7.592a3.615 3.615 0 0 1-5.112 0l-3.888-3.888a3.615 3.615 0 0 1 0-5.112L5.67 7.33"/>
                         </svg>
                     </button>
                     <button class="webext-draw-tool-btn" data-tool="size" title="Độ dày nét vẽ">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <circle cx="12" cy="12" r="1"/>
+                        </svg>
+                    </button>
+                    <button class="webext-draw-tool-btn" data-tool="picker" title="Lấy màu từ màn hình">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="m12 9-8.414 8.414A2 2 0 0 0 3 18.828v1.344a2 2 0 0 1-.586 1.414A2 2 0 0 1 3.828 21h1.344a2 2 0 0 0 1.414-.586L15 12"/>
+                            <path d="m18 9 .4.4a1 1 0 1 1-3 3l-3.8-3.8a1 1 0 1 1 3-3l.4.4 3.4-3.4a1 1 0 1 1 3 3z"/>
+                            <path d="m2 22 .414-.414"/>
+                        </svg>
+                    </button>
+                    <button class="webext-draw-tool-btn webext-draw-clear-btn" data-tool="clearall" title="Xóa tất cả">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="1" fill="none"/>
-                            <circle cx="12" cy="12" r="3" fill="none"/>
-                            <circle cx="12" cy="12" r="5" fill="none"/>
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            <line x1="10" y1="11" x2="10" y2="17"/>
+                            <line x1="14" y1="11" x2="14" y2="17"/>
                         </svg>
                     </button>
                 </div>
@@ -283,40 +328,128 @@ class WebDrawingExtension {
                 </button>
             </div>
             
-            <!-- Color Popup -->
-            <div id="webext-color-popup" class="webext-draw-popup" style="display: none;">
-                <div class="webext-draw-quick-colors">
-                    <div class="webext-draw-quick-color webext-draw-custom-color" data-color="custom" title="Chọn màu tùy chỉnh" style="background: linear-gradient(45deg, #ff0000 0%, #00ff00 33%, #0000ff 66%, #ffff00 100%); position: relative;">
-                        <input type="color" id="webext-custom-color-input" style="position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer;">
-                    </div>
-                    <div class="webext-draw-quick-color" data-color="#000000" style="background:#000000"></div>
-                    <div class="webext-draw-quick-color" data-color="#ffffff" style="background:#ffffff"></div>
-                    <div class="webext-draw-quick-color" data-color="#ff0000" style="background:#ff0000"></div>
-                    <div class="webext-draw-quick-color" data-color="#00ff00" style="background:#00ff00"></div>
-                    <div class="webext-draw-quick-color" data-color="#0000ff" style="background:#0000ff"></div>
-                    <div class="webext-draw-quick-color" data-color="#ffff00" style="background:#ffff00"></div>
-                    <div class="webext-draw-quick-color" data-color="#ff00ff" style="background:#ff00ff"></div>
-                    <div class="webext-draw-quick-color" data-color="#00ffff" style="background:#00ffff"></div>
-                    <div class="webext-draw-quick-color" data-color="#ff8800" style="background:#ff8800"></div>
-                    <div class="webext-draw-quick-color" data-color="#8800ff" style="background:#8800ff"></div>
-                    <div class="webext-draw-quick-color" data-color="#00ff88" style="background:#00ff88"></div>
-                    <div class="webext-draw-quick-color" data-color="#ff69b4" style="background:#ff69b4"></div>
-                    <div class="webext-draw-quick-color" data-color="#32cd32" style="background:#32cd32"></div>
-                    <div class="webext-draw-quick-color" data-color="#4169e1" style="background:#4169e1"></div>
-                </div>
-            </div>
-            
-            <!-- Size Popup -->
-            <div id="webext-size-popup" class="webext-draw-popup" style="display: none;">
-                <div class="webext-draw-size-controls">
-                    <input type="range" id="webext-line-width" min="1" max="50" value="3">
-                    <span id="webext-draw-size-value">3</span>
-                </div>
-            </div>
-        `;
+            `;
         
         document.body.appendChild(ui);
         this.uiElement = ui;
+        
+        // Create popups separately and append directly to body (not inside ui)
+        const colorPopup = document.createElement('div');
+        colorPopup.id = 'webext-color-popup';
+        colorPopup.className = 'webext-draw-popup';
+        colorPopup.style.display = 'none';
+        colorPopup.innerHTML = `
+            <div class="webext-draw-quick-colors">
+                <div class="webext-draw-quick-color webext-draw-custom-color" data-color="custom" title="Chọn màu tùy chỉnh" style="background: linear-gradient(45deg, #ff0000 0%, #00ff00 33%, #0000ff 66%, #ffff00 100%); position: relative;">
+                    <input type="color" id="webext-custom-color-input" style="position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer;">
+                </div>
+                <div class="webext-draw-quick-color active" data-color="#000000" style="background:#000000"></div>
+                <div class="webext-draw-quick-color" data-color="#ffffff" style="background:#ffffff"></div>
+                <div class="webext-draw-quick-color" data-color="#ff0000" style="background:#ff0000"></div>
+                <div class="webext-draw-quick-color" data-color="#00ff00" style="background:#00ff00"></div>
+                <div class="webext-draw-quick-color" data-color="#0000ff" style="background:#0000ff"></div>
+                <div class="webext-draw-quick-color" data-color="#ffff00" style="background:#ffff00"></div>
+                <div class="webext-draw-quick-color" data-color="#ff00ff" style="background:#ff00ff"></div>
+                <div class="webext-draw-quick-color" data-color="#00ffff" style="background:#00ffff"></div>
+                <div class="webext-draw-quick-color" data-color="#ff8800" style="background:#ff8800"></div>
+                <div class="webext-draw-quick-color" data-color="#8800ff" style="background:#8800ff"></div>
+                <div class="webext-draw-quick-color" data-color="#00ff88" style="background:#00ff88"></div>
+                <div class="webext-draw-quick-color" data-color="#ff69b4" style="background:#ff69b4"></div>
+                <div class="webext-draw-quick-color" data-color="#32cd32" style="background:#32cd32"></div>
+                <div class="webext-draw-quick-color" data-color="#4169e1" style="background:#4169e1"></div>
+            </div>
+            <label class="webext-draw-checkbox-label" style="margin-top: 10px;">
+                <input type="checkbox" id="webext-fill-enabled">
+                <span>Tô màu bên trong</span>
+            </label>
+        `;
+        document.body.appendChild(colorPopup);
+        
+        const sizePopup = document.createElement('div');
+        sizePopup.id = 'webext-size-popup';
+        sizePopup.className = 'webext-draw-popup';
+        sizePopup.style.display = 'none';
+        sizePopup.innerHTML = `
+            <div class="webext-draw-size-controls">
+                <input type="range" id="webext-line-width" min="1" max="50" value="3">
+                <span id="webext-draw-size-value">3</span>
+            </div>
+        `;
+        document.body.appendChild(sizePopup);
+        
+        const shapesPopup = document.createElement('div');
+        shapesPopup.id = 'webext-shapes-popup';
+        shapesPopup.className = 'webext-draw-popup';
+        shapesPopup.style.display = 'none';
+        shapesPopup.innerHTML = `
+            <div class="webext-draw-shapes-grid">
+                <button class="webext-draw-shape-btn" data-shape="line" title="Đường thẳng">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="5" y1="19" x2="19" y2="5"/>
+                    </svg>
+                </button>
+                <button class="webext-draw-shape-btn" data-shape="arrow" title="Mũi tên">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                        <polyline points="12 5 19 12 12 19"/>
+                    </svg>
+                </button>
+                <button class="webext-draw-shape-btn" data-shape="rectangle" title="Hình chữ nhật">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    </svg>
+                </button>
+                <button class="webext-draw-shape-btn" data-shape="circle" title="Hình tròn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                    </svg>
+                </button>
+                <button class="webext-draw-shape-btn" data-shape="triangle" title="Tam giác">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2L2 20h20L12 2z"/>
+                    </svg>
+                </button>
+                <button class="webext-draw-shape-btn" data-shape="star" title="Ngôi sao">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                    </svg>
+                </button>
+                <button class="webext-draw-shape-btn" data-shape="diamond" title="Hình thoi">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2L22 12L12 22L2 12L12 2z"/>
+                    </svg>
+                </button>
+                <button class="webext-draw-shape-btn" data-shape="hexagon" title="Lục giác">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2L21 7V17L12 22L3 17V7L12 2z"/>
+                    </svg>
+                </button>
+                <button class="webext-draw-shape-btn" data-shape="pentagon" title="Ngũ giác">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2L22 9L18 21H6L2 9L12 2z"/>
+                    </svg>
+                </button>
+                <button class="webext-draw-shape-btn" data-shape="ellipse" title="Hình elip">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <ellipse cx="12" cy="12" rx="10" ry="6"/>
+                    </svg>
+                </button>
+                <button class="webext-draw-shape-btn" data-shape="cross" title="Dấu cộng">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19"/>
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                </button>
+                <button class="webext-draw-shape-btn" data-shape="highlight" title="Highlight">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="10" width="18" height="6" rx="1" fill="currentColor" opacity="0.3"/>
+                        <line x1="3" y1="13" x2="21" y2="13"/>
+                    </svg>
+                </button>
+            </div>
+        `;
+        document.body.appendChild(shapesPopup);
+        
         
         // Don't create toggle button anymore - toolbar shows directly
         // this.createToggleButton();
@@ -356,6 +489,21 @@ class WebDrawingExtension {
                 } else if (tool === 'size') {
                     this.togglePopup('size', button);
                     return;
+                } else if (tool === 'shapes') {
+                    this.togglePopup('shapes', button);
+                    return;
+                }
+                
+                // Handle picker tool - open EyeDropper immediately
+                if (tool === 'picker') {
+                    this.pickColorImmediate();
+                    return;
+                }
+                
+                // Handle clear all tool
+                if (tool === 'clearall') {
+                    this.clearCanvas();
+                    return;
                 }
                 
                 // Handle drawing tools
@@ -375,46 +523,123 @@ class WebDrawingExtension {
                     customColorInput.click();
                 } else {
                     this.currentColor = color;
+                    // Update active state for colors
+                    quickColors.forEach(c => c.classList.remove('active'));
+                    e.target.classList.add('active');
                 }
             });
         });
         
         customColorInput.addEventListener('change', (e) => {
             this.currentColor = e.target.value;
+            // Remove active from all quick colors when custom color is selected
+            quickColors.forEach(c => c.classList.remove('active'));
         });
         
         lineWidthSlider.addEventListener('input', (e) => {
             this.lineWidth = e.target.value;
             sizeValue.textContent = e.target.value;
         });
-
-        // Close popups when clicking outside
+        
+        // Shape buttons in popup
+        const shapeButtons = document.querySelectorAll('.webext-draw-shape-btn');
+        shapeButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const shape = e.currentTarget.dataset.shape;
+                this.drawingMode = shape;
+                this.updateCursor();
+                
+                // Update active state
+                shapeButtons.forEach(b => b.classList.remove('active'));
+                e.currentTarget.classList.add('active');
+                
+                // Update main shapes button to show active
+                const shapesBtn = document.querySelector('.webext-draw-tool-btn[data-tool="shapes"]');
+                toolButtons.forEach(b => b.classList.remove('active'));
+                shapesBtn.classList.add('active');
+                
+                this.closeAllPopups();
+            });
+        });
+        
+        // Fill color checkbox (in color popup)
+        const fillEnabledCheckbox = document.getElementById('webext-fill-enabled');
+        fillEnabledCheckbox.addEventListener('change', (e) => {
+            this.fillEnabled = e.target.checked;
+            // When fill is enabled, use current stroke color as fill color
+            if (this.fillEnabled) {
+                this.fillColor = this.currentColor;
+            }
+        });
+        
+        // Close popups when clicking outside (except drag handle and during/after dragging)
         document.addEventListener('click', (e) => {
+            // Don't close popups when clicking on drag handle or just finished dragging
+            if (e.target.closest('.webext-drag-handle') || this.justFinishedDragging || this.isDragging) {
+                return;
+            }
+            
             if (!e.target.closest('.webext-draw-tool-btn[data-tool="color"]') && 
                 !e.target.closest('#webext-color-popup')) {
                 colorPopup.style.display = 'none';
-                // Remove active state from color button when popup is closed by outside click
                 document.querySelector('.webext-draw-tool-btn[data-tool="color"]')?.classList.remove('popup-active');
             }
             if (!e.target.closest('.webext-draw-tool-btn[data-tool="size"]') && 
                 !e.target.closest('#webext-size-popup')) {
                 sizePopup.style.display = 'none';
-                // Remove active state from size button when popup is closed by outside click
                 document.querySelector('.webext-draw-tool-btn[data-tool="size"]')?.classList.remove('popup-active');
+            }
+            const shapesPopupEl = document.getElementById('webext-shapes-popup');
+            if (!e.target.closest('.webext-draw-tool-btn[data-tool="shapes"]') && 
+                !e.target.closest('#webext-shapes-popup')) {
+                shapesPopupEl.style.display = 'none';
+                document.querySelector('.webext-draw-tool-btn[data-tool="shapes"]')?.classList.remove('popup-active');
             }
         });
 
         this.canvas.addEventListener('mousedown', (e) => this.startDrawing(e));
-        this.canvas.addEventListener('mousemove', (e) => this.draw(e));
+        this.canvas.addEventListener('mousemove', (e) => {
+            this.draw(e);
+            this.updateResizeCursor(e);
+        });
         this.canvas.addEventListener('mouseup', () => this.stopDrawing());
         this.canvas.addEventListener('mouseout', () => this.stopDrawing());
 
+        // Block space key scrolling globally when extension is enabled
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && this.isEnabled) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+        
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 this.disableDrawing();
                 this.closeAllPopups();
+            } else if (e.code === 'Space' && !this.isSpacePressed && this.isEnabled) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.isSpacePressed = true;
+                this.previousDrawingMode = this.drawingMode;
+                this.drawingMode = 'move';
+                this.canvas.style.cursor = 'grab';
+                return false;
             }
-        });
+        }, { capture: true });
+        
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'Space' && this.isSpacePressed) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.isSpacePressed = false;
+                this.drawingMode = this.previousDrawingMode;
+                this.updateCursor();
+                // Reset move state
+                this.selectedShape = null;
+                this.originalShape = null;
+                return false;
+            }
+        }, { capture: true });
     }
 
     enableDrawing() {
@@ -439,16 +664,52 @@ class WebDrawingExtension {
         this.shapeStartY = e.clientY;
         
         if (this.drawingMode === 'move') {
-            // Check if clicking on a shape
-            this.selectedShape = this.getShapeAtPoint(e.clientX, e.clientY);
+            // Check if clicking on resize/rotate handle of already selected shape
             if (this.selectedShape) {
-                // Store initial position for delta calculation
+                const bounds = this.getShapeBounds(this.selectedShape);
+                const handle = this.getHandleAtPoint(e.clientX, e.clientY, bounds);
+                if (handle) {
+                    if (handle === 'rotate') {
+                        this.isRotating = true;
+                        this.resizeHandle = handle;
+                        const centerX = bounds.x + bounds.width / 2;
+                        const centerY = bounds.y + bounds.height / 2;
+                        this.rotateStartAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX);
+                        this.originalShape = JSON.parse(JSON.stringify(this.selectedShape));
+                        this.originalBounds = { ...bounds };
+                        this.canvas.style.cursor = 'grabbing';
+                    } else {
+                        this.isResizing = true;
+                        this.resizeHandle = handle;
+                        this.resizeStartX = e.clientX;
+                        this.resizeStartY = e.clientY;
+                        this.originalBounds = { ...bounds };
+                        this.originalShape = JSON.parse(JSON.stringify(this.selectedShape));
+                    }
+                    return;
+                }
+            }
+            
+            // Select shape or deselect if clicking empty area
+            const clickedShape = this.getShapeAtPoint(e.clientX, e.clientY);
+            if (clickedShape) {
+                this.selectedShape = clickedShape;
                 this.moveStartX = e.clientX;
                 this.moveStartY = e.clientY;
                 this.originalShape = JSON.parse(JSON.stringify(this.selectedShape));
+                this.canvas.style.cursor = 'grabbing';
+                this.redrawAllShapes();
+            } else {
+                // Deselect if clicking empty area
+                this.selectedShape = null;
+                this.redrawAllShapes();
+                this.isDrawing = false;
             }
         } else if (this.drawingMode === 'picker') {
             this.pickColor(e.clientX, e.clientY);
+        } else if (this.drawingMode === 'text') {
+            this.showTextInput(e.clientX, e.clientY);
+            this.isDrawing = false;
         } else if (this.drawingMode === 'pen') {
             // Start new path
             this.currentPath = [{x: e.clientX, y: e.clientY}];
@@ -476,6 +737,7 @@ class WebDrawingExtension {
             this.lastX = e.clientX;
             this.lastY = e.clientY;
         } else if (this.drawingMode === 'eraser') {
+            // Apply eraser to canvas only - don't modify shapes array
             this.ctx.globalCompositeOperation = 'destination-out';
             this.ctx.beginPath();
             this.ctx.moveTo(this.lastX, this.lastY);
@@ -485,66 +747,30 @@ class WebDrawingExtension {
             this.ctx.lineJoin = 'round';
             this.ctx.stroke();
             this.ctx.globalCompositeOperation = 'source-over';
-            
-            // Track erased area and remove shapes from array
-            const eraserRect = {
-                x: Math.min(this.lastX, e.clientX) - this.lineWidth * 2,
-                y: Math.min(this.lastY, e.clientY) - this.lineWidth * 2,
-                width: Math.abs(e.clientX - this.lastX) + this.lineWidth * 4,
-                height: Math.abs(e.clientY - this.lastY) + this.lineWidth * 4
-            };
-            
-            // Remove shapes that intersect with eraser
-            this.shapes = this.shapes.filter(shape => {
-                if (shape.type === 'path') {
-                    // Check if any point in path intersects with eraser
-                    return !shape.points.some(point => 
-                        point.x >= eraserRect.x && 
-                        point.x <= eraserRect.x + eraserRect.width &&
-                        point.y >= eraserRect.y && 
-                        point.y <= eraserRect.y + eraserRect.height
-                    );
-                } else if (shape.type === 'rect') {
-                    // Check rectangle intersection
-                    return !(shape.x < eraserRect.x + eraserRect.width &&
-                            shape.x + shape.width > eraserRect.x &&
-                            shape.y < eraserRect.y + eraserRect.height &&
-                            shape.y + shape.height > eraserRect.y);
-                } else if (shape.type === 'circle') {
-                    // Check circle intersection
-                    const dist = Math.sqrt(
-                        Math.pow(shape.cx - (eraserRect.x + eraserRect.width/2), 2) + 
-                        Math.pow(shape.cy - (eraserRect.y + eraserRect.height/2), 2)
-                    );
-                    return dist > shape.r + Math.max(eraserRect.width, eraserRect.height)/2;
-                } else if (shape.type === 'line' || shape.type === 'arrow') {
-                    // Check line intersection
-                    return !(shape.x1 >= eraserRect.x && shape.x1 <= eraserRect.x + eraserRect.width &&
-                            shape.y1 >= eraserRect.y && shape.y1 <= eraserRect.y + eraserRect.height &&
-                            shape.x2 >= eraserRect.x && shape.x2 <= eraserRect.x + eraserRect.width &&
-                            shape.y2 >= eraserRect.y && shape.y2 <= eraserRect.y + eraserRect.height);
-                } else if (shape.type === 'polygon') {
-                    // Check polygon intersection
-                    const points = shape.points.split(' ');
-                    return !points.some(point => {
-                        const [x, y] = point.split(',').map(Number);
-                        return x >= eraserRect.x && x <= eraserRect.x + eraserRect.width &&
-                               y >= eraserRect.y && y <= eraserRect.y + eraserRect.height;
-                    });
-                }
-                return true;
-            });
 
             this.lastX = e.clientX;
             this.lastY = e.clientY;
         } else if (this.drawingMode === 'move') {
+            // Handle rotating
+            if (this.isRotating && this.selectedShape && this.originalShape) {
+                this.rotateShape(e.clientX, e.clientY);
+                this.redrawAllShapes();
+                return;
+            }
+            
+            // Handle resizing
+            if (this.isResizing && this.selectedShape && this.originalShape) {
+                this.resizeShape(e.clientX, e.clientY);
+                this.redrawAllShapes();
+                return;
+            }
+            
             if (this.selectedShape && this.originalShape) {
+                // Move individual shape
                 const deltaX = e.clientX - this.moveStartX;
                 const deltaY = e.clientY - this.moveStartY;
                 
-                // Update position based on shape type
                 if (this.selectedShape.type === 'path') {
-                    // Move all points in the path
                     this.selectedShape.points = this.originalShape.points.map(point => ({
                         x: point.x + deltaX,
                         y: point.y + deltaY
@@ -560,13 +786,22 @@ class WebDrawingExtension {
                     this.selectedShape.y1 = this.originalShape.y1 + deltaY;
                     this.selectedShape.x2 = this.originalShape.x2 + deltaX;
                     this.selectedShape.y2 = this.originalShape.y2 + deltaY;
-                } else if (this.selectedShape.type === 'polygon') {
+                } else if (this.selectedShape.type === 'polygon' || this.selectedShape.type === 'rotatedHighlight') {
                     const points = this.originalShape.points.split(' ');
                     const newPoints = points.map(point => {
                         const [x, y] = point.split(',').map(Number);
                         return `${x + deltaX},${y + deltaY}`;
                     });
                     this.selectedShape.points = newPoints.join(' ');
+                } else if (this.selectedShape.type === 'highlight') {
+                    this.selectedShape.x = this.originalShape.x + deltaX;
+                    this.selectedShape.y = this.originalShape.y + deltaY;
+                } else if (this.selectedShape.type === 'ellipse') {
+                    this.selectedShape.cx = this.originalShape.cx + deltaX;
+                    this.selectedShape.cy = this.originalShape.cy + deltaY;
+                } else if (this.selectedShape.type === 'cross') {
+                    this.selectedShape.cx = this.originalShape.cx + deltaX;
+                    this.selectedShape.cy = this.originalShape.cy + deltaY;
                 }
                 
                 this.redrawAllShapes();
@@ -597,7 +832,7 @@ class WebDrawingExtension {
                 shape.setAttribute('y', rectY);
                 shape.setAttribute('width', rectWidth);
                 shape.setAttribute('height', rectHeight);
-                shape.setAttribute('fill', 'none');
+                shape.setAttribute('fill', this.fillEnabled ? this.fillColor : 'none');
                 shape.setAttribute('stroke', strokeColor);
                 shape.setAttribute('stroke-width', strokeWidth);
                 break;
@@ -608,7 +843,7 @@ class WebDrawingExtension {
                 shape.setAttribute('cx', this.shapeStartX);
                 shape.setAttribute('cy', this.shapeStartY);
                 shape.setAttribute('r', radius);
-                shape.setAttribute('fill', 'none');
+                shape.setAttribute('fill', this.fillEnabled ? this.fillColor : 'none');
                 shape.setAttribute('stroke', strokeColor);
                 shape.setAttribute('stroke-width', strokeWidth);
                 break;
@@ -634,7 +869,7 @@ class WebDrawingExtension {
                 const y3 = currentY;
                 const points = `${x1},${y1} ${x2},${y2} ${x3},${y3}`;
                 shape.setAttribute('points', points);
-                shape.setAttribute('fill', 'none');
+                shape.setAttribute('fill', this.fillEnabled ? this.fillColor : 'none');
                 shape.setAttribute('stroke', strokeColor);
                 shape.setAttribute('stroke-width', strokeWidth);
                 shape.setAttribute('stroke-linejoin', 'round');
@@ -655,7 +890,7 @@ class WebDrawingExtension {
                     starPoints.push(`${x},${y}`);
                 }
                 shape.setAttribute('points', starPoints.join(' '));
-                shape.setAttribute('fill', 'none');
+                shape.setAttribute('fill', this.fillEnabled ? this.fillColor : 'none');
                 shape.setAttribute('stroke', strokeColor);
                 shape.setAttribute('stroke-width', strokeWidth);
                 shape.setAttribute('stroke-linejoin', 'round');
@@ -700,6 +935,114 @@ class WebDrawingExtension {
                 arrowHead2.setAttribute('stroke-linecap', 'round');
                 shape.appendChild(arrowHead2);
                 break;
+
+            case 'highlight':
+                shape = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                const hlWidth = Math.abs(currentX - this.shapeStartX);
+                const hlHeight = Math.abs(currentY - this.shapeStartY);
+                const hlX = Math.min(currentX, this.shapeStartX);
+                const hlY = Math.min(currentY, this.shapeStartY);
+                shape.setAttribute('x', hlX);
+                shape.setAttribute('y', hlY);
+                shape.setAttribute('width', hlWidth);
+                shape.setAttribute('height', hlHeight);
+                shape.setAttribute('fill', strokeColor);
+                shape.setAttribute('fill-opacity', '0.3');
+                shape.setAttribute('stroke', 'none');
+                break;
+
+            case 'diamond':
+                shape = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                const dCenterX = (this.shapeStartX + currentX) / 2;
+                const dCenterY = (this.shapeStartY + currentY) / 2;
+                const dWidth = Math.abs(currentX - this.shapeStartX) / 2;
+                const dHeight = Math.abs(currentY - this.shapeStartY) / 2;
+                const diamondPoints = [
+                    `${dCenterX},${dCenterY - dHeight}`,
+                    `${dCenterX + dWidth},${dCenterY}`,
+                    `${dCenterX},${dCenterY + dHeight}`,
+                    `${dCenterX - dWidth},${dCenterY}`
+                ];
+                shape.setAttribute('points', diamondPoints.join(' '));
+                shape.setAttribute('fill', this.fillEnabled ? this.fillColor : 'none');
+                shape.setAttribute('stroke', strokeColor);
+                shape.setAttribute('stroke-width', strokeWidth);
+                break;
+
+            case 'hexagon':
+                shape = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                const hCenterX = (this.shapeStartX + currentX) / 2;
+                const hCenterY = (this.shapeStartY + currentY) / 2;
+                const hRadius = Math.sqrt(Math.pow(currentX - this.shapeStartX, 2) + Math.pow(currentY - this.shapeStartY, 2)) / 2;
+                const hexPoints = [];
+                for (let i = 0; i < 6; i++) {
+                    const hAngle = (Math.PI / 3) * i - Math.PI / 2;
+                    hexPoints.push(`${hCenterX + hRadius * Math.cos(hAngle)},${hCenterY + hRadius * Math.sin(hAngle)}`);
+                }
+                shape.setAttribute('points', hexPoints.join(' '));
+                shape.setAttribute('fill', this.fillEnabled ? this.fillColor : 'none');
+                shape.setAttribute('stroke', strokeColor);
+                shape.setAttribute('stroke-width', strokeWidth);
+                break;
+
+            case 'pentagon':
+                shape = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                const pCenterX = (this.shapeStartX + currentX) / 2;
+                const pCenterY = (this.shapeStartY + currentY) / 2;
+                const pRadius = Math.sqrt(Math.pow(currentX - this.shapeStartX, 2) + Math.pow(currentY - this.shapeStartY, 2)) / 2;
+                const pentPoints = [];
+                for (let i = 0; i < 5; i++) {
+                    const pAngle = (Math.PI * 2 / 5) * i - Math.PI / 2;
+                    pentPoints.push(`${pCenterX + pRadius * Math.cos(pAngle)},${pCenterY + pRadius * Math.sin(pAngle)}`);
+                }
+                shape.setAttribute('points', pentPoints.join(' '));
+                shape.setAttribute('fill', this.fillEnabled ? this.fillColor : 'none');
+                shape.setAttribute('stroke', strokeColor);
+                shape.setAttribute('stroke-width', strokeWidth);
+                break;
+
+            case 'ellipse':
+                shape = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+                const eCenterX = (this.shapeStartX + currentX) / 2;
+                const eCenterY = (this.shapeStartY + currentY) / 2;
+                const eRadiusX = Math.abs(currentX - this.shapeStartX) / 2;
+                const eRadiusY = Math.abs(currentY - this.shapeStartY) / 2;
+                shape.setAttribute('cx', eCenterX);
+                shape.setAttribute('cy', eCenterY);
+                shape.setAttribute('rx', eRadiusX);
+                shape.setAttribute('ry', eRadiusY);
+                shape.setAttribute('fill', this.fillEnabled ? this.fillColor : 'none');
+                shape.setAttribute('stroke', strokeColor);
+                shape.setAttribute('stroke-width', strokeWidth);
+                break;
+
+            case 'cross':
+                shape = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                const crCenterX = (this.shapeStartX + currentX) / 2;
+                const crCenterY = (this.shapeStartY + currentY) / 2;
+                const crWidth = Math.abs(currentX - this.shapeStartX) / 2;
+                const crHeight = Math.abs(currentY - this.shapeStartY) / 2;
+                
+                const vLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                vLine.setAttribute('x1', crCenterX);
+                vLine.setAttribute('y1', crCenterY - crHeight);
+                vLine.setAttribute('x2', crCenterX);
+                vLine.setAttribute('y2', crCenterY + crHeight);
+                vLine.setAttribute('stroke', strokeColor);
+                vLine.setAttribute('stroke-width', strokeWidth);
+                vLine.setAttribute('stroke-linecap', 'round');
+                shape.appendChild(vLine);
+                
+                const hLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                hLine.setAttribute('x1', crCenterX - crWidth);
+                hLine.setAttribute('y1', crCenterY);
+                hLine.setAttribute('x2', crCenterX + crWidth);
+                hLine.setAttribute('y2', crCenterY);
+                hLine.setAttribute('stroke', strokeColor);
+                hLine.setAttribute('stroke-width', strokeWidth);
+                hLine.setAttribute('stroke-linecap', 'round');
+                shape.appendChild(hLine);
+                break;
         }
 
         if (shape) {
@@ -727,8 +1070,31 @@ class WebDrawingExtension {
                 }
             }
         }
+        
+        // Handle move mode - reset cursor
+        if (this.drawingMode === 'move') {
+            if (this.isSpacePressed) {
+                this.canvas.style.cursor = 'grab';
+            } else {
+                this.updateCursor();
+            }
+            // Keep shape selected after move/resize for further editing
+            if (this.selectedShape) {
+                this.redrawAllShapes();
+            }
+        }
+        
+        // Reset resize and rotation state
+        this.isResizing = false;
+        this.isRotating = false;
+        this.resizeHandle = null;
+        this.originalBounds = null;
+        
         this.isDrawing = false;
-        this.selectedShape = null;
+        // Don't deselect shape in move mode - keep it selected
+        if (this.drawingMode !== 'move') {
+            this.selectedShape = null;
+        }
         this.originalShape = null;
         this.svgOverlay.style.pointerEvents = 'none';
     }
@@ -842,7 +1208,7 @@ class WebDrawingExtension {
         this.shapes = [];
     }
 
-    async pickColor(x, y) {
+    async pickColorImmediate() {
         try {
             // Use EyeDropper API if available (Chrome 95+)
             if (window.EyeDropper) {
@@ -858,32 +1224,20 @@ class WebDrawingExtension {
                 
                 // Set as current color
                 this.currentColor = hexColor;
-                
-                // Switch back to pen tool
-                const penTool = document.querySelector('.webext-draw-tool-btn[data-tool="pen"]');
-                if (penTool) {
-                    penTool.click();
-                }
             } else {
-                // Fallback: Use canvas element to pick color
-                const element = document.elementFromPoint(x, y);
-                if (element) {
-                    // Create a temporary canvas to capture the element
-                    const rect = element.getBoundingClientRect();
-                    const tempCanvas = document.createElement('canvas');
-                    const tempCtx = tempCanvas.getContext('2d');
-                    tempCanvas.width = rect.width;
-                    tempCanvas.height = rect.height;
-                    
-                    // Use html2canvas library if available, otherwise show message
-                    this.showColorNotification('#FF5733 (Fallback - Install EyeDropper)');
-                }
+                this.showColorNotification('Trình duyệt không hỗ trợ EyeDropper API');
             }
         } catch (error) {
-            console.error('Color picker error:', error);
-            this.showColorNotification('#FF5733 (Error)');
+            // User cancelled or error
+            if (error.name !== 'AbortError') {
+                console.error('Color picker error:', error);
+            }
         }
-        
+    }
+
+    async pickColor(x, y) {
+        // Redirect to immediate picker
+        await this.pickColorImmediate();
         this.isDrawing = false;
     }
 
@@ -913,35 +1267,88 @@ class WebDrawingExtension {
         }, 2000);
     }
 
+    addTextToCanvas(x, y, text) {
+        const fontSize = 16;
+        const fontFamily = 'Nunito, Arial, sans-serif';
+        const fontWeight = '700';
+        const fontString = `${fontWeight} ${fontSize}px ${fontFamily}`;
+        
+        this.ctx.font = fontString;
+        this.ctx.fillStyle = this.currentColor;
+        this.ctx.textBaseline = 'top';
+        this.ctx.fillText(text, x, y);
+        this.ctx.textBaseline = 'alphabetic';
+        
+        // Save text shape
+        this.shapes.push({
+            type: 'text',
+            text: text,
+            x: x,
+            y: y,
+            color: this.currentColor,
+            fontSize: fontSize,
+            fontFamily: fontFamily,
+            fontWeight: fontWeight
+        });
+    }
+
     showTextInput(x, y) {
         // Temporarily disable canvas pointer events
         this.canvas.style.pointerEvents = 'none';
         
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.style.cssText = `
+        const fontSize = 16;
+        const fontFamily = 'Nunito, Arial, sans-serif';
+        const fontWeight = '700';
+        
+        const inputElement = document.createElement('input');
+        inputElement.type = 'text';
+        inputElement.id = 'webext-text-input';
+        inputElement.style.cssText = `
             position: fixed;
             left: ${x}px;
             top: ${y}px;
-            font-size: ${this.lineWidth * 5}px;
+            font-size: ${fontSize}px;
+            font-family: ${fontFamily};
+            font-weight: ${fontWeight};
             color: ${this.currentColor};
             background: transparent;
-            border: 1px dashed #007bff;
+            border: none;
+            border-bottom: 2px dashed ${this.currentColor};
             outline: none;
-            z-index: 1000002;
-            padding: 2px;
-            min-width: 100px;
+            z-index: 1000010;
+            padding: 0;
+            margin: 0;
+            width: 50px;
+            height: ${fontSize + 4}px;
+            line-height: ${fontSize}px;
+            caret-color: ${this.currentColor};
         `;
         
-        document.body.appendChild(input);
-        input.focus();
+        // Auto-expand input as user types
+        inputElement.addEventListener('input', () => {
+            inputElement.style.width = Math.max(50, inputElement.scrollWidth) + 'px';
+        });
         
+        document.body.appendChild(inputElement);
+        
+        // Use setTimeout to ensure input is ready before focusing
+        setTimeout(() => {
+            inputElement.focus();
+        }, 10);
+        
+        let isFinished = false;
         const finishText = () => {
-            const text = input.value.trim();
+            if (isFinished) return;
+            isFinished = true;
+            
+            const text = inputElement.value.trim();
             if (text) {
-                this.ctx.font = `${this.lineWidth * 5}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
+                const fontString = `${fontWeight} ${fontSize}px ${fontFamily}`;
+                this.ctx.font = fontString;
                 this.ctx.fillStyle = this.currentColor;
+                this.ctx.textBaseline = 'top';
                 this.ctx.fillText(text, x, y);
+                this.ctx.textBaseline = 'alphabetic';
                 
                 // Save text shape
                 this.shapes.push({
@@ -950,32 +1357,43 @@ class WebDrawingExtension {
                     x: x,
                     y: y,
                     color: this.currentColor,
-                    fontSize: this.lineWidth * 5
+                    fontSize: fontSize,
+                    fontFamily: fontFamily,
+                    fontWeight: fontWeight
                 });
             }
-            input.remove();
+            inputElement.remove();
             this.isDrawing = false;
             // Re-enable canvas pointer events
             this.canvas.style.pointerEvents = 'auto';
         };
         
-        input.addEventListener('blur', finishText);
-        input.addEventListener('keydown', (e) => {
+        inputElement.addEventListener('blur', () => {
+            // Delay to allow Enter key to work
+            setTimeout(finishText, 100);
+        });
+        inputElement.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 finishText();
+            } else if (e.key === 'Escape') {
+                isFinished = true;
+                inputElement.remove();
+                this.canvas.style.pointerEvents = 'auto';
             }
         });
     }
 
     createShapeFromSVG() {
-        const shape = this.svgOverlay.querySelector('rect, circle, line, g, polygon');
+        const shape = this.svgOverlay.querySelector('rect, circle, line, g, polygon, path, ellipse');
         if (!shape) return null;
         
         const shapeData = {
             type: shape.tagName,
             color: this.currentColor,
-            strokeWidth: this.lineWidth
+            strokeWidth: this.lineWidth,
+            fillColor: this.fillEnabled ? this.fillColor : 'none',
+            fillEnabled: this.fillEnabled
         };
         
         if (shape.tagName === 'rect') {
@@ -983,6 +1401,11 @@ class WebDrawingExtension {
             shapeData.y = parseFloat(shape.getAttribute('y'));
             shapeData.width = parseFloat(shape.getAttribute('width'));
             shapeData.height = parseFloat(shape.getAttribute('height'));
+            // Check if it's a highlight (has fill-opacity)
+            if (shape.getAttribute('fill-opacity')) {
+                shapeData.type = 'highlight';
+                shapeData.fillOpacity = parseFloat(shape.getAttribute('fill-opacity'));
+            }
         } else if (shape.tagName === 'circle') {
             shapeData.x = parseFloat(shape.getAttribute('cx'));
             shapeData.y = parseFloat(shape.getAttribute('cy'));
@@ -1007,7 +1430,21 @@ class WebDrawingExtension {
                 shapeData.x2 = parseFloat(mainLine.getAttribute('x2'));
                 shapeData.y2 = parseFloat(mainLine.getAttribute('y2'));
                 shapeData.type = 'arrow';
+            } else if (lines.length === 2) { // Cross
+                const vLine = lines[0];
+                const hLine = lines[1];
+                shapeData.type = 'cross';
+                shapeData.cx = parseFloat(vLine.getAttribute('x1'));
+                shapeData.cy = (parseFloat(vLine.getAttribute('y1')) + parseFloat(vLine.getAttribute('y2'))) / 2;
+                shapeData.width = Math.abs(parseFloat(hLine.getAttribute('x2')) - parseFloat(hLine.getAttribute('x1')));
+                shapeData.height = Math.abs(parseFloat(vLine.getAttribute('y2')) - parseFloat(vLine.getAttribute('y1')));
             }
+        } else if (shape.tagName === 'ellipse') {
+            shapeData.type = 'ellipse';
+            shapeData.cx = parseFloat(shape.getAttribute('cx'));
+            shapeData.cy = parseFloat(shape.getAttribute('cy'));
+            shapeData.rx = parseFloat(shape.getAttribute('rx'));
+            shapeData.ry = parseFloat(shape.getAttribute('ry'));
         }
         
         return shapeData;
@@ -1029,10 +1466,13 @@ class WebDrawingExtension {
                     }
                 }
             } else if (shape.type === 'text') {
-                this.ctx.font = `${shape.fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
+                const fontFamily = shape.fontFamily || 'Nunito, Arial, sans-serif';
+                const fontWeight = shape.fontWeight || '700';
+                this.ctx.font = `${fontWeight} ${shape.fontSize}px ${fontFamily}`;
                 const metrics = this.ctx.measureText(shape.text);
+                // Text baseline is 'top', so y is the top of the text
                 if (x >= shape.x && x <= shape.x + metrics.width &&
-                    y >= shape.y - shape.fontSize && y <= shape.y) {
+                    y >= shape.y && y <= shape.y + shape.fontSize) {
                     return shape;
                 }
             } else if (shape.type === 'rect') {
@@ -1054,7 +1494,7 @@ class WebDrawingExtension {
                 if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
                     return shape;
                 }
-            } else if (shape.type === 'polygon') {
+            } else if (shape.type === 'polygon' || shape.type === 'rotatedHighlight') {
                 // Simple bounding box for polygons
                 const points = shape.points.split(' ').map(p => p.split(',').map(Number));
                 const minX = Math.min(...points.map(p => p[0])) - 10;
@@ -1062,6 +1502,27 @@ class WebDrawingExtension {
                 const minY = Math.min(...points.map(p => p[1])) - 10;
                 const maxY = Math.max(...points.map(p => p[1])) + 10;
                 if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+                    return shape;
+                }
+            } else if (shape.type === 'highlight') {
+                // Bounding box check for highlight
+                if (x >= shape.x && x <= shape.x + shape.width &&
+                    y >= shape.y && y <= shape.y + shape.height) {
+                    return shape;
+                }
+            } else if (shape.type === 'ellipse') {
+                // Ellipse hit detection
+                const dx = (x - shape.cx) / shape.rx;
+                const dy = (y - shape.cy) / shape.ry;
+                if (dx * dx + dy * dy <= 1) {
+                    return shape;
+                }
+            } else if (shape.type === 'cross') {
+                // Bounding box for cross
+                const halfW = shape.width / 2;
+                const halfH = shape.height / 2;
+                if (x >= shape.cx - halfW && x <= shape.cx + halfW &&
+                    y >= shape.cy - halfH && y <= shape.cy + halfH) {
                     return shape;
                 }
             }
@@ -1100,6 +1561,336 @@ class WebDrawingExtension {
         return Math.sqrt(dx * dx + dy * dy);
     }
 
+    rotateShape(mouseX, mouseY) {
+        const bounds = this.originalBounds;
+        const centerX = bounds.x + bounds.width / 2;
+        const centerY = bounds.y + bounds.height / 2;
+        const currentAngle = Math.atan2(mouseY - centerY, mouseX - centerX);
+        const deltaAngle = currentAngle - this.rotateStartAngle;
+        
+        const shape = this.selectedShape;
+        const origShape = this.originalShape;
+        
+        // Helper function to rotate a point around center
+        const rotatePoint = (px, py) => {
+            const cos = Math.cos(deltaAngle);
+            const sin = Math.sin(deltaAngle);
+            const dx = px - centerX;
+            const dy = py - centerY;
+            return {
+                x: centerX + dx * cos - dy * sin,
+                y: centerY + dx * sin + dy * cos
+            };
+        };
+        
+        if (shape.type === 'rect') {
+            // Convert rect to polygon for rotation
+            const corners = [
+                { x: origShape.x, y: origShape.y },
+                { x: origShape.x + origShape.width, y: origShape.y },
+                { x: origShape.x + origShape.width, y: origShape.y + origShape.height },
+                { x: origShape.x, y: origShape.y + origShape.height }
+            ];
+            const rotatedCorners = corners.map(c => rotatePoint(c.x, c.y));
+            // Convert to polygon type
+            shape.type = 'polygon';
+            shape.points = rotatedCorners.map(c => `${c.x},${c.y}`).join(' ');
+            delete shape.x;
+            delete shape.y;
+            delete shape.width;
+            delete shape.height;
+        } else if (shape.type === 'highlight') {
+            // Convert highlight to rotated polygon but keep fill
+            const corners = [
+                { x: origShape.x, y: origShape.y },
+                { x: origShape.x + origShape.width, y: origShape.y },
+                { x: origShape.x + origShape.width, y: origShape.y + origShape.height },
+                { x: origShape.x, y: origShape.y + origShape.height }
+            ];
+            const rotatedCorners = corners.map(c => rotatePoint(c.x, c.y));
+            // Convert to rotated highlight polygon
+            shape.type = 'rotatedHighlight';
+            shape.points = rotatedCorners.map(c => `${c.x},${c.y}`).join(' ');
+            shape.fillOpacity = origShape.fillOpacity || 0.3;
+            delete shape.x;
+            delete shape.y;
+            delete shape.width;
+            delete shape.height;
+        } else if (shape.type === 'circle') {
+            const rotated = rotatePoint(origShape.x, origShape.y);
+            shape.x = rotated.x;
+            shape.y = rotated.y;
+        } else if (shape.type === 'ellipse') {
+            const rotated = rotatePoint(origShape.cx, origShape.cy);
+            shape.cx = rotated.x;
+            shape.cy = rotated.y;
+        } else if (shape.type === 'line' || shape.type === 'arrow') {
+            const p1 = rotatePoint(origShape.x1, origShape.y1);
+            const p2 = rotatePoint(origShape.x2, origShape.y2);
+            shape.x1 = p1.x;
+            shape.y1 = p1.y;
+            shape.x2 = p2.x;
+            shape.y2 = p2.y;
+        } else if (shape.type === 'polygon' || shape.type === 'rotatedHighlight') {
+            const origPoints = origShape.points.split(' ').map(p => p.split(',').map(Number));
+            const newPoints = origPoints.map(([px, py]) => {
+                const rotated = rotatePoint(px, py);
+                return `${rotated.x},${rotated.y}`;
+            });
+            shape.points = newPoints.join(' ');
+        } else if (shape.type === 'cross') {
+            const rotated = rotatePoint(origShape.cx, origShape.cy);
+            shape.cx = rotated.x;
+            shape.cy = rotated.y;
+        } else if (shape.type === 'path') {
+            shape.points = origShape.points.map(p => rotatePoint(p.x, p.y));
+        } else if (shape.type === 'text') {
+            const rotated = rotatePoint(origShape.x, origShape.y);
+            shape.x = rotated.x;
+            shape.y = rotated.y;
+        }
+    }
+
+    resizeShape(mouseX, mouseY) {
+        const deltaX = mouseX - this.resizeStartX;
+        const deltaY = mouseY - this.resizeStartY;
+        const handle = this.resizeHandle;
+        const orig = this.originalBounds;
+        const shape = this.selectedShape;
+        const origShape = this.originalShape;
+        
+        let newX = orig.x;
+        let newY = orig.y;
+        let newWidth = orig.width;
+        let newHeight = orig.height;
+        
+        // Calculate new bounds based on handle
+        if (handle.includes('w')) {
+            newX = orig.x + deltaX;
+            newWidth = orig.width - deltaX;
+        }
+        if (handle.includes('e')) {
+            newWidth = orig.width + deltaX;
+        }
+        if (handle.includes('n')) {
+            newY = orig.y + deltaY;
+            newHeight = orig.height - deltaY;
+        }
+        if (handle.includes('s')) {
+            newHeight = orig.height + deltaY;
+        }
+        
+        // Ensure minimum size
+        if (newWidth < 10) { newWidth = 10; newX = orig.x + orig.width - 10; }
+        if (newHeight < 10) { newHeight = 10; newY = orig.y + orig.height - 10; }
+        
+        // Apply to shape based on type
+        if (shape.type === 'rect' || shape.type === 'highlight') {
+            shape.x = newX;
+            shape.y = newY;
+            shape.width = newWidth;
+            shape.height = newHeight;
+        } else if (shape.type === 'circle') {
+            const newRadius = Math.max(newWidth, newHeight) / 2;
+            shape.radius = newRadius;
+            shape.x = newX + newWidth / 2;
+            shape.y = newY + newHeight / 2;
+        } else if (shape.type === 'ellipse') {
+            shape.rx = newWidth / 2;
+            shape.ry = newHeight / 2;
+            shape.cx = newX + newWidth / 2;
+            shape.cy = newY + newHeight / 2;
+        } else if (shape.type === 'line' || shape.type === 'arrow') {
+            // Scale line endpoints
+            const scaleX = newWidth / orig.width || 1;
+            const scaleY = newHeight / orig.height || 1;
+            shape.x1 = newX + (origShape.x1 - orig.x) * scaleX;
+            shape.y1 = newY + (origShape.y1 - orig.y) * scaleY;
+            shape.x2 = newX + (origShape.x2 - orig.x) * scaleX;
+            shape.y2 = newY + (origShape.y2 - orig.y) * scaleY;
+        } else if (shape.type === 'polygon' || shape.type === 'rotatedHighlight') {
+            // Scale polygon points
+            const scaleX = newWidth / orig.width || 1;
+            const scaleY = newHeight / orig.height || 1;
+            const origPoints = origShape.points.split(' ').map(p => p.split(',').map(Number));
+            const newPoints = origPoints.map(([px, py]) => {
+                const nx = newX + (px - orig.x) * scaleX;
+                const ny = newY + (py - orig.y) * scaleY;
+                return `${nx},${ny}`;
+            });
+            shape.points = newPoints.join(' ');
+        } else if (shape.type === 'cross') {
+            shape.width = newWidth;
+            shape.height = newHeight;
+            shape.cx = newX + newWidth / 2;
+            shape.cy = newY + newHeight / 2;
+        } else if (shape.type === 'path') {
+            // Scale path points
+            const scaleX = newWidth / orig.width || 1;
+            const scaleY = newHeight / orig.height || 1;
+            shape.points = origShape.points.map(p => ({
+                x: newX + (p.x - orig.x) * scaleX,
+                y: newY + (p.y - orig.y) * scaleY
+            }));
+        } else if (shape.type === 'text') {
+            // Scale font size proportionally
+            const scale = Math.max(newWidth / orig.width, newHeight / orig.height) || 1;
+            shape.fontSize = Math.max(8, Math.round(origShape.fontSize * scale));
+            shape.x = newX;
+            shape.y = newY;
+        }
+    }
+
+    getShapeBounds(shape) {
+        let bounds = { x: 0, y: 0, width: 0, height: 0 };
+        
+        if (shape.type === 'rect' || shape.type === 'highlight') {
+            bounds = { x: shape.x, y: shape.y, width: shape.width, height: shape.height };
+        } else if (shape.type === 'circle') {
+            bounds = { x: shape.x - shape.radius, y: shape.y - shape.radius, width: shape.radius * 2, height: shape.radius * 2 };
+        } else if (shape.type === 'ellipse') {
+            bounds = { x: shape.cx - shape.rx, y: shape.cy - shape.ry, width: shape.rx * 2, height: shape.ry * 2 };
+        } else if (shape.type === 'line' || shape.type === 'arrow') {
+            const minX = Math.min(shape.x1, shape.x2);
+            const minY = Math.min(shape.y1, shape.y2);
+            bounds = { x: minX, y: minY, width: Math.abs(shape.x2 - shape.x1), height: Math.abs(shape.y2 - shape.y1) };
+        } else if (shape.type === 'polygon' || shape.type === 'rotatedHighlight') {
+            const points = shape.points.split(' ').map(p => p.split(',').map(Number));
+            const xs = points.map(p => p[0]);
+            const ys = points.map(p => p[1]);
+            const minX = Math.min(...xs);
+            const minY = Math.min(...ys);
+            bounds = { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
+        } else if (shape.type === 'cross') {
+            const halfW = shape.width / 2;
+            const halfH = shape.height / 2;
+            bounds = { x: shape.cx - halfW, y: shape.cy - halfH, width: shape.width, height: shape.height };
+        } else if (shape.type === 'text') {
+            const fontFamily = shape.fontFamily || 'Nunito, Arial, sans-serif';
+            const fontWeight = shape.fontWeight || '700';
+            this.ctx.font = `${fontWeight} ${shape.fontSize}px ${fontFamily}`;
+            const metrics = this.ctx.measureText(shape.text);
+            bounds = { x: shape.x, y: shape.y, width: metrics.width, height: shape.fontSize };
+        } else if (shape.type === 'path') {
+            const xs = shape.points.map(p => p.x);
+            const ys = shape.points.map(p => p.y);
+            const minX = Math.min(...xs);
+            const minY = Math.min(...ys);
+            bounds = { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
+        }
+        
+        return bounds;
+    }
+
+    getResizeHandles(bounds) {
+        const handleSize = 12;
+        const hs = handleSize / 2;
+        return {
+            nw: { x: bounds.x - hs, y: bounds.y - hs, cursor: 'nwse-resize' },
+            n: { x: bounds.x + bounds.width / 2 - hs, y: bounds.y - hs, cursor: 'ns-resize' },
+            ne: { x: bounds.x + bounds.width - hs, y: bounds.y - hs, cursor: 'nesw-resize' },
+            e: { x: bounds.x + bounds.width - hs, y: bounds.y + bounds.height / 2 - hs, cursor: 'ew-resize' },
+            se: { x: bounds.x + bounds.width - hs, y: bounds.y + bounds.height - hs, cursor: 'nwse-resize' },
+            s: { x: bounds.x + bounds.width / 2 - hs, y: bounds.y + bounds.height - hs, cursor: 'ns-resize' },
+            sw: { x: bounds.x - hs, y: bounds.y + bounds.height - hs, cursor: 'nesw-resize' },
+            w: { x: bounds.x - hs, y: bounds.y + bounds.height / 2 - hs, cursor: 'ew-resize' },
+            rotate: { x: bounds.x + bounds.width / 2 - hs, y: bounds.y - 30 - hs, cursor: 'grab' }
+        };
+    }
+
+    getHandleAtPoint(x, y, bounds) {
+        const handles = this.getResizeHandles(bounds);
+        const handleSize = 12;
+        
+        // Check rotate handle first (circle) with larger hit area
+        const rotateHandle = handles.rotate;
+        const rotateCenterX = rotateHandle.x + handleSize / 2;
+        const rotateCenterY = rotateHandle.y + handleSize / 2;
+        const distToRotate = Math.sqrt(Math.pow(x - rotateCenterX, 2) + Math.pow(y - rotateCenterY, 2));
+        if (distToRotate <= handleSize) { // Larger hit area for rotate
+            return 'rotate';
+        }
+        
+        // Check resize handles (squares)
+        for (const [key, handle] of Object.entries(handles)) {
+            if (key === 'rotate') continue;
+            if (x >= handle.x && x <= handle.x + handleSize &&
+                y >= handle.y && y <= handle.y + handleSize) {
+                return key;
+            }
+        }
+        return null;
+    }
+
+    drawResizeHandles(bounds) {
+        const handles = this.getResizeHandles(bounds);
+        const handleSize = 12;
+        
+        // Draw selection border
+        this.ctx.strokeStyle = '#007bff';
+        this.ctx.lineWidth = 1;
+        this.ctx.setLineDash([5, 5]);
+        this.ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
+        this.ctx.setLineDash([]);
+        
+        // Draw line to rotate handle
+        this.ctx.beginPath();
+        this.ctx.moveTo(bounds.x + bounds.width / 2, bounds.y);
+        this.ctx.lineTo(bounds.x + bounds.width / 2, bounds.y - 30);
+        this.ctx.strokeStyle = '#007bff';
+        this.ctx.lineWidth = 1;
+        this.ctx.stroke();
+        
+        // Draw handles
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.strokeStyle = '#007bff';
+        this.ctx.lineWidth = 2;
+        
+        for (const [key, handle] of Object.entries(handles)) {
+            if (key === 'rotate') {
+                // Draw rotate handle as circle
+                this.ctx.beginPath();
+                this.ctx.arc(handle.x + handleSize / 2, handle.y + handleSize / 2, handleSize / 2, 0, 2 * Math.PI);
+                this.ctx.fill();
+                this.ctx.stroke();
+            } else {
+                this.ctx.fillRect(handle.x, handle.y, handleSize, handleSize);
+                this.ctx.strokeRect(handle.x, handle.y, handleSize, handleSize);
+            }
+        }
+    }
+
+    updateResizeCursor(e) {
+        if (!this.isEnabled || this.isDrawing) return;
+        if (this.drawingMode !== 'move') return;
+        
+        if (this.selectedShape) {
+            const bounds = this.getShapeBounds(this.selectedShape);
+            const handle = this.getHandleAtPoint(e.clientX, e.clientY, bounds);
+            
+            if (handle) {
+                const handles = this.getResizeHandles(bounds);
+                this.canvas.style.cursor = handles[handle].cursor;
+                return;
+            }
+            
+            // Check if over the selected shape
+            if (this.getShapeAtPoint(e.clientX, e.clientY) === this.selectedShape) {
+                this.canvas.style.cursor = 'move';
+                return;
+            }
+        }
+        
+        // Check if hovering over any shape
+        const hoverShape = this.getShapeAtPoint(e.clientX, e.clientY);
+        if (hoverShape) {
+            this.canvas.style.cursor = 'pointer';
+        } else {
+            this.canvas.style.cursor = 'default';
+        }
+    }
+
+
     redrawAllShapes() {
         // Clear canvas
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -1123,14 +1914,26 @@ class WebDrawingExtension {
                 });
                 this.ctx.stroke();
             } else if (shape.type === 'text') {
-                this.ctx.font = `${shape.fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
+                const fontFamily = shape.fontFamily || 'Nunito, Arial, sans-serif';
+                const fontWeight = shape.fontWeight || '700';
+                this.ctx.font = `${fontWeight} ${shape.fontSize}px ${fontFamily}`;
                 this.ctx.fillStyle = shape.color;
+                this.ctx.textBaseline = 'top';
                 this.ctx.fillText(shape.text, shape.x, shape.y);
+                this.ctx.textBaseline = 'alphabetic';
             } else if (shape.type === 'rect') {
+                if (shape.fillEnabled && shape.fillColor && shape.fillColor !== 'none') {
+                    this.ctx.fillStyle = shape.fillColor;
+                    this.ctx.fillRect(shape.x, shape.y, shape.width, shape.height);
+                }
                 this.ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
             } else if (shape.type === 'circle') {
                 this.ctx.beginPath();
                 this.ctx.arc(shape.x, shape.y, shape.radius, 0, 2 * Math.PI);
+                if (shape.fillEnabled && shape.fillColor && shape.fillColor !== 'none') {
+                    this.ctx.fillStyle = shape.fillColor;
+                    this.ctx.fill();
+                }
                 this.ctx.stroke();
             } else if (shape.type === 'line') {
                 this.ctx.beginPath();
@@ -1172,18 +1975,72 @@ class WebDrawingExtension {
                     }
                 });
                 this.ctx.closePath();
+                if (shape.fillEnabled && shape.fillColor && shape.fillColor !== 'none') {
+                    this.ctx.fillStyle = shape.fillColor;
+                    this.ctx.fill();
+                }
+                this.ctx.stroke();
+            } else if (shape.type === 'highlight') {
+                // Draw highlight (filled rectangle with opacity)
+                this.ctx.fillStyle = shape.color;
+                this.ctx.globalAlpha = shape.fillOpacity || 0.3;
+                this.ctx.fillRect(shape.x, shape.y, shape.width, shape.height);
+                this.ctx.globalAlpha = 1;
+            } else if (shape.type === 'rotatedHighlight') {
+                // Draw rotated highlight (filled polygon with opacity)
+                const points = shape.points.split(' ');
+                this.ctx.fillStyle = shape.color;
+                this.ctx.globalAlpha = shape.fillOpacity || 0.3;
+                this.ctx.beginPath();
+                points.forEach((point, index) => {
+                    const [x, y] = point.split(',').map(parseFloat);
+                    if (index === 0) {
+                        this.ctx.moveTo(x, y);
+                    } else {
+                        this.ctx.lineTo(x, y);
+                    }
+                });
+                this.ctx.closePath();
+                this.ctx.fill();
+                this.ctx.globalAlpha = 1;
+            } else if (shape.type === 'ellipse') {
+                this.ctx.beginPath();
+                this.ctx.ellipse(shape.cx, shape.cy, shape.rx, shape.ry, 0, 0, 2 * Math.PI);
+                if (shape.fillEnabled && shape.fillColor && shape.fillColor !== 'none') {
+                    this.ctx.fillStyle = shape.fillColor;
+                    this.ctx.fill();
+                }
+                this.ctx.stroke();
+            } else if (shape.type === 'cross') {
+                const halfW = shape.width / 2;
+                const halfH = shape.height / 2;
+                this.ctx.beginPath();
+                this.ctx.moveTo(shape.cx, shape.cy - halfH);
+                this.ctx.lineTo(shape.cx, shape.cy + halfH);
+                this.ctx.stroke();
+                this.ctx.beginPath();
+                this.ctx.moveTo(shape.cx - halfW, shape.cy);
+                this.ctx.lineTo(shape.cx + halfW, shape.cy);
                 this.ctx.stroke();
             }
         });
+        
+        // Draw resize handles if a shape is selected
+        if (this.selectedShape && this.drawingMode === 'move') {
+            const bounds = this.getShapeBounds(this.selectedShape);
+            this.drawResizeHandles(bounds);
+        }
     }
 
     togglePopup(type, button) {
         const colorPopup = document.getElementById('webext-color-popup');
         const sizePopup = document.getElementById('webext-size-popup');
+        const shapesPopup = document.getElementById('webext-shapes-popup');
         
         // Check if the popup is already open
         const isPopupOpen = (type === 'color' && colorPopup.style.display === 'block') ||
-                           (type === 'size' && sizePopup.style.display === 'block');
+                           (type === 'size' && sizePopup.style.display === 'block') ||
+                           (type === 'shapes' && shapesPopup.style.display === 'block');
         
         // Close all popups first
         this.closeAllPopups();
@@ -1200,32 +2057,26 @@ class WebDrawingExtension {
         const buttonRect = button.getBoundingClientRect();
         const isToolbarLeft = this.uiElement.classList.contains('toolbar-left');
         
+        const positionPopup = (popup) => {
+            if (isToolbarLeft) {
+                popup.style.left = (buttonRect.right + 10) + 'px';
+                popup.style.right = 'auto';
+            } else {
+                popup.style.right = (window.innerWidth - buttonRect.left + 10) + 'px';
+                popup.style.left = 'auto';
+            }
+            popup.style.top = buttonRect.top + 'px';
+            popup.style.bottom = 'auto';
+            popup.style.transform = 'none';
+            popup.style.display = 'block';
+        };
+        
         if (type === 'color') {
-            colorPopup.style.display = 'block';
-            colorPopup.style.top = buttonRect.top + 'px';
-            
-            if (isToolbarLeft) {
-                // Position popup to the right of button when toolbar is on left
-                colorPopup.style.left = (buttonRect.right + 10) + 'px';
-                colorPopup.style.right = 'auto';
-            } else {
-                // Position popup to the left of button when toolbar is on right
-                colorPopup.style.right = (window.innerWidth - buttonRect.left + 10) + 'px';
-                colorPopup.style.left = 'auto';
-            }
+            positionPopup(colorPopup);
         } else if (type === 'size') {
-            sizePopup.style.display = 'block';
-            sizePopup.style.top = buttonRect.top + 'px';
-            
-            if (isToolbarLeft) {
-                // Position popup to the right of button when toolbar is on left
-                sizePopup.style.left = (buttonRect.right + 10) + 'px';
-                sizePopup.style.right = 'auto';
-            } else {
-                // Position popup to the left of button when toolbar is on right
-                sizePopup.style.right = (window.innerWidth - buttonRect.left + 10) + 'px';
-                sizePopup.style.left = 'auto';
-            }
+            positionPopup(sizePopup);
+        } else if (type === 'shapes') {
+            positionPopup(shapesPopup);
         }
     }
     
@@ -1278,6 +2129,7 @@ class WebDrawingExtension {
     stopDragging() {
         if (this.isDragging) {
             this.isDragging = false;
+            this.justFinishedDragging = true;
             document.body.style.cursor = 'auto';
             // Remove dragging class
             this.uiElement.classList.remove('dragging');
@@ -1285,6 +2137,11 @@ class WebDrawingExtension {
             // Update toolbar side class one final time
             const rect = this.uiElement.getBoundingClientRect();
             this.updateToolbarSideClass(rect.left);
+            
+            // Reset flag after a short delay to prevent click from closing popup
+            setTimeout(() => {
+                this.justFinishedDragging = false;
+            }, 100);
         }
     }
     
@@ -1306,7 +2163,6 @@ class WebDrawingExtension {
         
         if (colorPopup && colorPopup.style.display === 'block' && colorBtn) {
             const buttonRect = colorBtn.getBoundingClientRect();
-            colorPopup.style.top = buttonRect.top + 'px';
             
             if (isToolbarLeft) {
                 colorPopup.style.left = (buttonRect.right + 10) + 'px';
@@ -1315,11 +2171,13 @@ class WebDrawingExtension {
                 colorPopup.style.right = (window.innerWidth - buttonRect.left + 10) + 'px';
                 colorPopup.style.left = 'auto';
             }
+            colorPopup.style.top = buttonRect.top + 'px';
+            colorPopup.style.bottom = 'auto';
+            colorPopup.style.transform = 'none';
         }
         
         if (sizePopup && sizePopup.style.display === 'block' && sizeBtn) {
             const buttonRect = sizeBtn.getBoundingClientRect();
-            sizePopup.style.top = buttonRect.top + 'px';
             
             if (isToolbarLeft) {
                 sizePopup.style.left = (buttonRect.right + 10) + 'px';
@@ -1328,14 +2186,23 @@ class WebDrawingExtension {
                 sizePopup.style.right = (window.innerWidth - buttonRect.left + 10) + 'px';
                 sizePopup.style.left = 'auto';
             }
+            sizePopup.style.top = buttonRect.top + 'px';
+            sizePopup.style.bottom = 'auto';
+            sizePopup.style.transform = 'none';
         }
     }
     
     closeAllPopups() {
         const colorPopup = document.getElementById('webext-color-popup');
         const sizePopup = document.getElementById('webext-size-popup');
+        const shapesPopup = document.getElementById('webext-shapes-popup');
         colorPopup.style.display = 'none';
         sizePopup.style.display = 'none';
+        shapesPopup.style.display = 'none';
+        // Reset transform to ensure clean state when reopened
+        colorPopup.style.transform = '';
+        sizePopup.style.transform = '';
+        shapesPopup.style.transform = '';
         // Remove active state from all tool buttons
         document.querySelectorAll('.webext-draw-tool-btn').forEach(btn => {
             btn.classList.remove('popup-active');
@@ -1358,6 +2225,9 @@ class WebDrawingExtension {
                 break;
             case 'move':
                 this.canvas.style.cursor = 'move';
+                break;
+            case 'text':
+                this.canvas.style.cursor = 'text';
                 break;
             default:
                 this.canvas.style.cursor = 'crosshair';
