@@ -18,15 +18,63 @@
     z-index: 1000000 !important;
     cursor: auto !important;
     font-size: 12px !important;
-    transition: none !important;
+    transition: right 0.3s ease, opacity 0.3s ease !important;
     line-height: normal !important;
 }
 
 #webext-draw-ui.dragging {
-    transition: none;
+    transition: none !important;
 }
 
-/* Custom tooltips */
+/* Toggle button styles - blue gradient background */
+#webext-toggle-btn {
+    position: fixed !important;
+    left: 0 !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    width: 20px !important;
+    height: 70px !important;
+    background: #027bff !important;
+    border: none !important;
+    border-radius: 0 30px 30px 0 !important;
+    color: white !important;
+    cursor: pointer !important;
+    box-shadow: 2px 0 12px rgba(0, 102, 204, 0.4) !important;
+    z-index: 999999 !important;
+    transition: all 0.3s ease !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+}
+
+#webext-toggle-btn::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    background: linear-gradient(135deg, #00d4ff 0%, #0099ff 100%);
+    border-radius: 0 16px 16px 0;
+    z-index: -1;
+    opacity: 0.2;
+}
+
+#webext-toggle-btn:hover {
+    background: linear-gradient(135deg, #00aaff 0%, #0077dd 100%) !important;
+    box-shadow: 3px 0 16px rgba(0, 102, 204, 0.6) !important;
+}
+
+#webext-toggle-btn:hover::before {
+    opacity: 0.3;
+}
+
+#webext-toggle-btn svg {
+    transition: transform 0.3s ease;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+    width: 16px !important;
+    height: 16px !important;
+}
+
+/* Custom tooltips - toolbar on right, so tooltips show on left */
 .webext-draw-tool-btn[title]:hover::after,
 .webext-draw-close-btn[title]:hover::after {
     content: attr(title);
@@ -524,6 +572,7 @@
 
 .webext-draw-text-row input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
+    appearance: none;
     width: 14px;
     height: 14px;
     border-radius: 50%;
@@ -574,6 +623,7 @@
     background: #e0e0e0;
     outline: none;
     -webkit-appearance: none;
+    -moz-appearance: none;
     appearance: none;
 }
 

@@ -2,7 +2,12 @@ class WebDrawingExtension {
     constructor() {
         this.isDrawing = false;
         this.isEnabled = false;
-        this.currentColor = '#000000';
+        
+        // Load saved colors from localStorage or use defaults
+        this.currentColor = localStorage.getItem('webext-draw-color') || '#FF0000';
+        this.fillColor = localStorage.getItem('webext-draw-fill-color') || 'transparent';
+        this.fillEnabled = localStorage.getItem('webext-draw-fill-enabled') === 'true';
+        
         this.lineWidth = 3;
         this.canvas = null;
         this.ctx = null;
@@ -15,6 +20,7 @@ class WebDrawingExtension {
         this.shapeStartY = 0;
         this.uiElement = null;
         this.isToolbarVisible = false;
+        this.isToolbarCollapsed = false;
         this.shapes = []; // Store all shapes for movement
         this.selectedShape = null; // Currently selected shape for moving
         this.moveOffsetX = 0;
@@ -49,10 +55,6 @@ class WebDrawingExtension {
         this.isRotating = false;
         this.rotateStartAngle = 0;
 
-        // Fill color
-        this.fillColor = 'transparent';
-        this.fillEnabled = false;
-
         this.setupMessageListener();
     }
 
@@ -81,30 +83,14 @@ class WebDrawingExtension {
     createToggleButton() {
         const toggleBtn = document.createElement('button');
         toggleBtn.id = 'webext-toggle-btn';
-        toggleBtn.innerHTML = '🎨';
-        toggleBtn.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            width: 50px;
-            height: 50px;
-            background: #007bff;
-            border: none;
-            border-radius: 50%;
-            color: white;
-            font-size: 24px;
-            cursor: pointer;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-            z-index: 1000000;
-            transition: all 0.2s ease;
+        toggleBtn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"/>
+            </svg>
         `;
 
-        toggleBtn.addEventListener('mouseenter', () => {
-            toggleBtn.style.transform = 'scale(1.1)';
-        });
-
-        toggleBtn.addEventListener('mouseleave', () => {
-            toggleBtn.style.transform = 'scale(1)';
+        toggleBtn.addEventListener('click', () => {
+            this.toggleToolbarCollapse();
         });
 
         document.body.appendChild(toggleBtn);
@@ -113,16 +99,56 @@ class WebDrawingExtension {
     showToolbar() {
         this.uiElement.style.display = 'block';
         this.isToolbarVisible = true;
-        // Remove toggle button completely
-        const toggleBtn = document.getElementById('webext-toggle-btn');
-        if (toggleBtn) {
-            toggleBtn.remove();
+        this.isToolbarCollapsed = false;
+        // Create toggle button if it doesn't exist
+        if (!document.getElementById('webext-toggle-btn')) {
+            this.createToggleButton();
         }
+        this.updateToggleButton();
     }
 
     hideToolbar() {
         this.uiElement.style.display = 'none';
         this.isToolbarVisible = false;
+    }
+
+    toggleToolbarCollapse() {
+        this.isToolbarCollapsed = !this.isToolbarCollapsed;
+        
+        if (this.isToolbarCollapsed) {
+            // Hide toolbar to the right, keep toggle button on left
+            this.uiElement.style.right = '-100px';
+            this.uiElement.style.opacity = '0';
+            this.uiElement.style.pointerEvents = 'none';
+        } else {
+            // Show toolbar on the right
+            this.uiElement.style.right = '15px';
+            this.uiElement.style.opacity = '1';
+            this.uiElement.style.pointerEvents = 'auto';
+        }
+        
+        this.updateToggleButton();
+    }
+
+    updateToggleButton() {
+        const toggleBtn = document.getElementById('webext-toggle-btn');
+        if (!toggleBtn) return;
+        
+        if (this.isToolbarCollapsed) {
+            // Arrow pointing right (show toolbar)
+            toggleBtn.innerHTML = `
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 18 15 12 9 6"/>
+                </svg>
+            `;
+        } else {
+            // Arrow pointing left (hide toolbar)
+            toggleBtn.innerHTML = `
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15 18 9 12 15 6"/>
+                </svg>
+            `;
+        }
     }
 
     init() {
@@ -135,13 +161,31 @@ class WebDrawingExtension {
         this.showToolbar(); // Show toolbar directly instead of toggle button
         this.enableDrawing(); // Enable drawing by default
 
-        // Default: toolbar is on the right, so popup opens on the left
-        // No class needed - popup will open to the left by default
+        // Toolbar is on the right, so remove toolbar-left class for popup positioning
+        this.uiElement.classList.remove('toolbar-left');
 
         // Set pen tool as active by default
         const penTool = document.querySelector('.webext-draw-tool-btn[data-tool="pen"]');
         if (penTool) {
             penTool.classList.add('active');
+        }
+        
+        // Restore saved color selection
+        this.restoreSavedColors();
+    }
+    
+    restoreSavedColors() {
+        // Highlight the saved color in quick colors if it exists
+        const quickColors = document.querySelectorAll('.webext-draw-quick-color');
+        quickColors.forEach(colorEl => {
+            if (colorEl.dataset.color.toLowerCase() === this.currentColor.toLowerCase()) {
+                colorEl.classList.add('active');
+            }
+        });
+        
+        // Update color picker to match saved color
+        if (this.currentColor) {
+            this.updateColorPickerFromColor(this.currentColor);
         }
     }
 
@@ -567,9 +611,13 @@ class WebDrawingExtension {
             item.addEventListener('click', (e) => {
                 const color = e.target.dataset.color;
                 this.currentColor = color;
+                // Save to localStorage
+                localStorage.setItem('webext-draw-color', color);
+                
                 // Update fill color if fill is enabled
                 if (this.fillEnabled) {
                     this.fillColor = color;
+                    localStorage.setItem('webext-draw-fill-color', color);
                 }
                 // Update active state for colors
                 quickColors.forEach(c => c.classList.remove('active'));
@@ -625,11 +673,18 @@ class WebDrawingExtension {
 
         // Fill color checkbox (in color popup)
         const fillEnabledCheckbox = document.getElementById('webext-fill-enabled');
+        // Restore saved state
+        fillEnabledCheckbox.checked = this.fillEnabled;
+        
         fillEnabledCheckbox.addEventListener('change', (e) => {
             this.fillEnabled = e.target.checked;
+            // Save to localStorage
+            localStorage.setItem('webext-draw-fill-enabled', this.fillEnabled);
+            
             // When fill is enabled, use current stroke color as fill color
             if (this.fillEnabled) {
                 this.fillColor = this.currentColor;
+                localStorage.setItem('webext-draw-fill-color', this.currentColor);
             }
         });
 
@@ -745,9 +800,13 @@ class WebDrawingExtension {
         const updateColorFromPicker = () => {
             const color = hsbToHex(this.colorPickerHue, this.colorPickerSaturation, this.colorPickerBrightness);
             this.currentColor = color;
+            // Save to localStorage
+            localStorage.setItem('webext-draw-color', color);
+            
             // Update fill color if fill is enabled
             if (this.fillEnabled) {
                 this.fillColor = color;
+                localStorage.setItem('webext-draw-fill-color', color);
             }
             // Remove active from quick colors
             document.querySelectorAll('.webext-draw-quick-color').forEach(c => c.classList.remove('active'));
@@ -1438,6 +1497,14 @@ class WebDrawingExtension {
 
                 // Set as current color
                 this.currentColor = hexColor;
+                // Save to localStorage
+                localStorage.setItem('webext-draw-color', hexColor);
+                
+                // Update fill color if fill is enabled
+                if (this.fillEnabled) {
+                    this.fillColor = hexColor;
+                    localStorage.setItem('webext-draw-fill-color', hexColor);
+                }
             } else {
                 this.showColorNotification('Trình duyệt không hỗ trợ EyeDropper API');
             }
