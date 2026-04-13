@@ -90,6 +90,7 @@ class WebDrawingExtension {
         // Reset page margins from pinning
         document.documentElement.style.marginRight = '';
         document.documentElement.style.marginLeft = '';
+        this.removeAllBlurDivs();
         this.hideToolbar();
         this.cleanupExistingElements();
         this.isInitialized = false;
@@ -2015,7 +2016,19 @@ class WebDrawingExtension {
         while (this.svgOverlay.firstChild) {
             this.svgOverlay.removeChild(this.svgOverlay.firstChild);
         }
+        this.removeAllBlurDivs();
         this.shapes = [];
+    }
+
+    removeAllBlurDivs() {
+        document.querySelectorAll('.webext-blur-overlay').forEach(el => el.remove());
+    }
+
+    removeBlurDiv(shape) {
+        if (shape._blurId) {
+            const el = document.getElementById('webext-blur-' + shape._blurId);
+            if (el) el.remove();
+        }
     }
 
     async pickColorImmediate() {
@@ -2888,6 +2901,7 @@ class WebDrawingExtension {
         if (toDelete.length === 0) return;
 
         this.saveState();
+        toDelete.forEach(s => { if (s.type === 'blur') this.removeBlurDiv(s); });
         this.shapes = this.shapes.filter(s => !toDelete.includes(s));
         this.selectedShape = null;
         this.selectedShapes = [];
@@ -2895,8 +2909,9 @@ class WebDrawingExtension {
     }
 
     redrawAllShapes() {
-        // Clear canvas
+        // Clear canvas and blur overlays
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.removeAllBlurDivs();
 
         // Redraw all shapes
         this.shapes.forEach(shape => {
