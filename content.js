@@ -3037,9 +3037,6 @@ class WebDrawingExtension {
 
         // Get button position
         const buttonRect = button.getBoundingClientRect();
-        const isToolbarLeft = this.uiElement.classList.contains('toolbar-left');
-
-        const isPinned = this.pinState !== 'none';
 
         const positionPopup = (popup) => {
             // Show popup temporarily to get its dimensions
@@ -3049,25 +3046,18 @@ class WebDrawingExtension {
             const popupWidth = popup.offsetWidth;
             popup.style.visibility = '';
 
-            if (!isPinned) {
-                // Toolbar is horizontal at bottom — show popup above the button
-                let left = buttonRect.left + (buttonRect.width / 2) - (popupWidth / 2);
-                // Keep within viewport
-                left = Math.max(10, Math.min(left, window.innerWidth - popupWidth - 10));
-                popup.style.left = left + 'px';
-                popup.style.right = 'auto';
-                popup.style.top = (buttonRect.top - popupHeight - 10) + 'px';
-            } else if (isToolbarLeft) {
+            if (this.pinState === 'left') {
+                // Pinned left: popup shows to the right of toolbar
                 popup.style.left = (buttonRect.right + 10) + 'px';
                 popup.style.right = 'auto';
-                // Check if popup would go below viewport
                 const spaceBelow = window.innerHeight - buttonRect.top;
                 if (spaceBelow < popupHeight) {
                     popup.style.top = Math.max(10, window.innerHeight - popupHeight - 10) + 'px';
                 } else {
                     popup.style.top = buttonRect.top + 'px';
                 }
-            } else {
+            } else if (this.pinState === 'right') {
+                // Pinned right: popup shows to the left of toolbar
                 popup.style.right = (window.innerWidth - buttonRect.left + 10) + 'px';
                 popup.style.left = 'auto';
                 const spaceBelow = window.innerHeight - buttonRect.top;
@@ -3076,6 +3066,13 @@ class WebDrawingExtension {
                 } else {
                     popup.style.top = buttonRect.top + 'px';
                 }
+            } else {
+                // Floating horizontal: popup shows above the button
+                let left = buttonRect.left + (buttonRect.width / 2) - (popupWidth / 2);
+                left = Math.max(10, Math.min(left, window.innerWidth - popupWidth - 10));
+                popup.style.left = left + 'px';
+                popup.style.right = 'auto';
+                popup.style.top = (buttonRect.top - popupHeight - 10) + 'px';
             }
             popup.style.bottom = 'auto';
             popup.style.transform = 'none';
