@@ -3110,8 +3110,8 @@ class WebDrawingExtension {
                 blurDiv.style.cssText = `
                     position: fixed; left: ${shape.x}px; top: ${shape.y}px;
                     width: ${shape.width}px; height: ${shape.height}px;
-                    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-                    background: rgba(255,255,255,0.15);
+                    backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+                    background: rgba(255,255,255,0.05);
                     z-index: ${parseInt(getComputedStyle(this.canvas).zIndex) - 1};
                     pointer-events: none; border-radius: 2px;
                 `;
