@@ -21,7 +21,6 @@ class WebDrawingExtension {
         this.shapeStartY = 0;
         this.uiElement = null;
         this.isToolbarVisible = false;
-        this.isToolbarCollapsed = false;
         this.pinState = localStorage.getItem('webext-draw-pinned') || 'none'; // 'none', 'right'
         this.drawingsVisible = true;
         this.shapes = []; // Store all shapes for movement
@@ -62,6 +61,11 @@ class WebDrawingExtension {
         this.isRotating = false;
         this.rotateStartAngle = 0;
 
+        // Undo/Redo history
+        this.undoStack = [];
+        this.redoStack = [];
+        this.maxHistory = 50;
+
         this.setupMessageListener();
     }
 
@@ -90,31 +94,9 @@ class WebDrawingExtension {
         this.isInitialized = false;
     }
 
-    createToggleButton() {
-        const toggleBtn = document.createElement('button');
-        toggleBtn.id = 'webext-toggle-btn';
-        toggleBtn.innerHTML = `
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="9 18 15 12 9 6"/>
-            </svg>
-        `;
-
-        toggleBtn.addEventListener('click', () => {
-            this.toggleToolbarCollapse();
-        });
-
-        document.body.appendChild(toggleBtn);
-    }
-
     showToolbar() {
         this.uiElement.style.display = 'block';
         this.isToolbarVisible = true;
-        this.isToolbarCollapsed = false;
-        // Create toggle button if it doesn't exist
-        if (!document.getElementById('webext-toggle-btn')) {
-            this.createToggleButton();
-        }
-        this.updateToggleButton();
     }
 
     hideToolbar() {
@@ -134,50 +116,19 @@ class WebDrawingExtension {
         if (!pinBtns.length) return;
 
         // Reset
-        this.uiElement.classList.remove('pinned');
+        this.uiElement.classList.remove('pinned', 'pinned-left');
         pinBtns.forEach(b => b.classList.remove('active'));
         document.documentElement.style.marginRight = '';
+        document.documentElement.style.marginLeft = '';
 
         if (this.pinState === 'right') {
             this.uiElement.classList.add('pinned');
             document.querySelector('[data-tool="pin-right"]')?.classList.add('active');
             document.documentElement.style.marginRight = '62px';
-        }
-        // When 'none', CSS defaults apply (horizontal bottom center)
-    }
-
-    toggleToolbarCollapse() {
-        this.isToolbarCollapsed = !this.isToolbarCollapsed;
-        
-        if (this.isToolbarCollapsed) {
-            this.uiElement.style.opacity = '0';
-            this.uiElement.style.pointerEvents = 'none';
-        } else {
-            this.uiElement.style.opacity = '1';
-            this.uiElement.style.pointerEvents = 'auto';
-        }
-        
-        this.updateToggleButton();
-    }
-
-    updateToggleButton() {
-        const toggleBtn = document.getElementById('webext-toggle-btn');
-        if (!toggleBtn) return;
-        
-        if (this.isToolbarCollapsed) {
-            // Arrow pointing right (show toolbar)
-            toggleBtn.innerHTML = `
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="9 18 15 12 9 6"/>
-                </svg>
-            `;
-        } else {
-            // Arrow pointing left (hide toolbar)
-            toggleBtn.innerHTML = `
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="15 18 9 12 15 6"/>
-                </svg>
-            `;
+        } else if (this.pinState === 'left') {
+            this.uiElement.classList.add('pinned-left');
+            document.querySelector('[data-tool="pin-left"]')?.classList.add('active');
+            document.documentElement.style.marginLeft = '62px';
         }
     }
 
@@ -229,12 +180,6 @@ class WebDrawingExtension {
         const existingSVG = document.getElementById('webext-draw-svg-overlay');
         if (existingSVG) {
             existingSVG.remove();
-        }
-
-        // Remove existing toggle button if present
-        const existingToggleBtn = document.getElementById('webext-toggle-btn');
-        if (existingToggleBtn) {
-            existingToggleBtn.remove();
         }
 
         // Remove existing UI if present
@@ -323,14 +268,13 @@ class WebDrawingExtension {
                     </div>
                 </div>
                 <div class="webext-draw-toolbar-content">
-                    <!-- Cursor mode -->
+                    <!-- Select & Draw -->
                     <button class="webext-draw-tool-btn" data-tool="cursor" title="Con trỏ chuột">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M5 3l14 8-7 2-3 7z"/>
                             <path d="M12 13l5 5"/>
                         </svg>
                     </button>
-                    <!-- Drawing Tools -->
                     <button class="webext-draw-tool-btn" data-tool="pen" title="Bút vẽ">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <path d="M12 19l7-7 3 3-7 7-3-3z"/>
@@ -344,7 +288,6 @@ class WebDrawingExtension {
                             <line x1="12" y1="4" x2="12" y2="20"/>
                         </svg>
                     </button>
-                    <!-- Shapes (grouped) -->
                     <button class="webext-draw-tool-btn" data-tool="shapes" title="Hình dạng">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"/>
@@ -352,7 +295,7 @@ class WebDrawingExtension {
                             <circle cx="17.5" cy="17.5" r="3.5"/>
                         </svg>
                     </button>
-                    <!-- Edit Tools -->
+                    <!-- Edit -->
                     <button class="webext-draw-tool-btn" data-tool="move" title="Di chuyển">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <polyline points="5 9 2 12 5 15"/>
@@ -369,7 +312,19 @@ class WebDrawingExtension {
                             <line x1="11" y1="11" x2="17" y2="17"/>
                         </svg>
                     </button>
-                    <!-- Settings -->
+                    <button class="webext-draw-tool-btn webext-draw-action-btn" data-tool="undo" title="Hoàn tác (Ctrl+Z)" data-disabled="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="1 4 1 10 7 10"/>
+                            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                        </svg>
+                    </button>
+                    <button class="webext-draw-tool-btn webext-draw-action-btn" data-tool="redo" title="Làm lại (Ctrl+Shift+Z)" data-disabled="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"/>
+                            <path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/>
+                        </svg>
+                    </button>
+                    <!-- Style -->
                     <button class="webext-draw-tool-btn" data-tool="color" title="Màu sắc">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M19 12H2"/>
@@ -391,6 +346,7 @@ class WebDrawingExtension {
                             <path d="m2 22 .414-.414"/>
                         </svg>
                     </button>
+                    <!-- Actions -->
                     <button class="webext-draw-tool-btn webext-draw-clear-btn" data-tool="clearall" title="Xóa tất cả">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <polyline points="3 6 5 6 21 6"/>
@@ -410,6 +366,13 @@ class WebDrawingExtension {
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                         <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                </button>
+                <button class="webext-draw-tool-btn webext-draw-pin-btn" data-tool="pin-left" title="Ghim trái">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 3v18"/>
+                        <path d="M17 8H7l2 4h10z"/>
+                        <path d="M12 12v5"/>
                     </svg>
                 </button>
                 <button class="webext-draw-tool-btn webext-draw-pin-btn" data-tool="pin-right" title="Ghim phải">
@@ -438,32 +401,38 @@ class WebDrawingExtension {
         colorPopup.className = 'webext-draw-popup';
         colorPopup.style.display = 'none';
         colorPopup.innerHTML = `
-            <div class="webext-color-picker-container">
-                <div class="webext-color-picker-saturation" id="webext-saturation-panel">
-                    <div class="webext-color-picker-saturation-white"></div>
-                    <div class="webext-color-picker-saturation-black"></div>
-                    <div class="webext-color-picker-cursor" id="webext-saturation-cursor"></div>
+            <div class="webext-color-popup-layout">
+                <div class="webext-color-picker-container">
+                    <div class="webext-color-picker-saturation" id="webext-saturation-panel">
+                        <div class="webext-color-picker-saturation-white"></div>
+                        <div class="webext-color-picker-saturation-black"></div>
+                        <div class="webext-color-picker-cursor" id="webext-saturation-cursor"></div>
+                    </div>
+                    <div class="webext-color-picker-hue" id="webext-hue-slider">
+                        <div class="webext-color-picker-hue-cursor" id="webext-hue-cursor"></div>
+                    </div>
                 </div>
-                <div class="webext-color-picker-hue" id="webext-hue-slider">
-                    <div class="webext-color-picker-hue-cursor" id="webext-hue-cursor"></div>
+                <div class="webext-draw-quick-colors">
+                    <div class="webext-draw-quick-color" data-color="#000000" style="background:#000000"></div>
+                    <div class="webext-draw-quick-color" data-color="#ffffff" style="background:#ffffff"></div>
+                    <div class="webext-draw-quick-color" data-color="#808080" style="background:#808080"></div>
+                    <div class="webext-draw-quick-color active" data-color="#ff0000" style="background:#ff0000"></div>
+                    <div class="webext-draw-quick-color" data-color="#00ff00" style="background:#00ff00"></div>
+                    <div class="webext-draw-quick-color" data-color="#0000ff" style="background:#0000ff"></div>
+                    <div class="webext-draw-quick-color" data-color="#ffff00" style="background:#ffff00"></div>
+                    <div class="webext-draw-quick-color" data-color="#ff00ff" style="background:#ff00ff"></div>
+                    <div class="webext-draw-quick-color" data-color="#00ffff" style="background:#00ffff"></div>
+                    <div class="webext-draw-quick-color" data-color="#ff8800" style="background:#ff8800"></div>
+                    <div class="webext-draw-quick-color" data-color="#8800ff" style="background:#8800ff"></div>
+                    <div class="webext-draw-quick-color" data-color="#00ff88" style="background:#00ff88"></div>
+                    <div class="webext-draw-quick-color" data-color="#ff69b4" style="background:#ff69b4"></div>
+                    <div class="webext-draw-quick-color" data-color="#32cd32" style="background:#32cd32"></div>
+                    <div class="webext-draw-quick-color" data-color="#4169e1" style="background:#4169e1"></div>
+                    <div class="webext-draw-color-hex-row">
+                        <div class="webext-draw-color-preview" id="webext-color-preview"></div>
+                        <input type="text" class="webext-draw-hex-input" id="webext-hex-input" value="#FF0000" maxlength="7" spellcheck="false">
+                    </div>
                 </div>
-            </div>
-            <div class="webext-draw-quick-colors">
-                <div class="webext-draw-quick-color active" data-color="#000000" style="background:#000000"></div>
-                <div class="webext-draw-quick-color" data-color="#ffffff" style="background:#ffffff"></div>
-                <div class="webext-draw-quick-color" data-color="#808080" style="background:#808080"></div>
-                <div class="webext-draw-quick-color" data-color="#ff0000" style="background:#ff0000"></div>
-                <div class="webext-draw-quick-color" data-color="#00ff00" style="background:#00ff00"></div>
-                <div class="webext-draw-quick-color" data-color="#0000ff" style="background:#0000ff"></div>
-                <div class="webext-draw-quick-color" data-color="#ffff00" style="background:#ffff00"></div>
-                <div class="webext-draw-quick-color" data-color="#ff00ff" style="background:#ff00ff"></div>
-                <div class="webext-draw-quick-color" data-color="#00ffff" style="background:#00ffff"></div>
-                <div class="webext-draw-quick-color" data-color="#ff8800" style="background:#ff8800"></div>
-                <div class="webext-draw-quick-color" data-color="#8800ff" style="background:#8800ff"></div>
-                <div class="webext-draw-quick-color" data-color="#00ff88" style="background:#00ff88"></div>
-                <div class="webext-draw-quick-color" data-color="#ff69b4" style="background:#ff69b4"></div>
-                <div class="webext-draw-quick-color" data-color="#32cd32" style="background:#32cd32"></div>
-                <div class="webext-draw-quick-color" data-color="#4169e1" style="background:#4169e1"></div>
             </div>
             <label class="webext-draw-switch-label">
                 <input type="checkbox" id="webext-fill-enabled">
@@ -620,8 +589,6 @@ class WebDrawingExtension {
         `;
         document.body.appendChild(screenshotPopup);
 
-        // Don't create toggle button anymore - toolbar shows directly
-        // this.createToggleButton();
     }
 
     setupEventListeners() {
@@ -632,7 +599,6 @@ class WebDrawingExtension {
         const closeBtn = document.querySelector('.webext-draw-close-btn');
         const colorPopup = document.getElementById('webext-color-popup');
         const sizePopup = document.getElementById('webext-size-popup');
-        const toggleBtn = document.getElementById('webext-toggle-btn');
         const dragHandle = document.querySelector('.webext-drag-handle');
 
         // Setup color picker
@@ -671,8 +637,13 @@ class WebDrawingExtension {
                     return;
                 }
 
+                // Handle undo/redo
+                if (tool === 'undo') { this.undo(); return; }
+                if (tool === 'redo') { this.redo(); return; }
+
                 // Handle clear all tool
                 if (tool === 'clearall') {
+                    this.saveState();
                     this.clearCanvas();
                     return;
                 }
@@ -686,6 +657,10 @@ class WebDrawingExtension {
                 // Handle pin tools
                 if (tool === 'toggle-visibility') {
                     this.toggleDrawingsVisibility();
+                    return;
+                }
+                if (tool === 'pin-left') {
+                    this.togglePin('left');
                     return;
                 }
                 if (tool === 'pin-right') {
@@ -721,11 +696,14 @@ class WebDrawingExtension {
                     this.fillColor = color;
                     localStorage.setItem('webext-draw-fill-color', color);
                 }
-                // Update active state for colors
                 quickColors.forEach(c => c.classList.remove('active'));
                 e.target.classList.add('active');
-                // Update color picker to match
                 this.updateColorPickerFromColor(color);
+                // Update hex display
+                const hexInput = document.getElementById('webext-hex-input');
+                const preview = document.getElementById('webext-color-preview');
+                if (hexInput) hexInput.value = color.toUpperCase();
+                if (preview) preview.style.background = color;
             });
         });
 
@@ -857,9 +835,22 @@ class WebDrawingExtension {
         }, { passive: false });
 
         document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+
+            // Undo: Ctrl+Z / Cmd+Z
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
+                e.preventDefault();
+                this.undo();
+                return;
+            }
+            // Redo: Ctrl+Shift+Z / Cmd+Shift+Z or Ctrl+Y
+            if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') || ((e.ctrlKey || e.metaKey) && e.key === 'y')) {
+                e.preventDefault();
+                this.redo();
+                return;
+            }
+
             if ((e.key === 'Delete' || e.key === 'Backspace') && this.isEnabled && this.drawingMode === 'move') {
-                // Don't delete if user is typing in an input
-                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
                 e.preventDefault();
                 this.deleteSelectedShapes();
                 return;
@@ -900,6 +891,43 @@ class WebDrawingExtension {
         }, { capture: true });
     }
 
+    saveState() {
+        this.undoStack.push(JSON.parse(JSON.stringify(this.shapes)));
+        if (this.undoStack.length > this.maxHistory) {
+            this.undoStack.shift();
+        }
+        this.redoStack = [];
+        this.updateUndoRedoButtons();
+    }
+
+    undo() {
+        if (this.undoStack.length === 0) return;
+        this.redoStack.push(JSON.parse(JSON.stringify(this.shapes)));
+        this.shapes = this.undoStack.pop();
+        this.selectedShape = null;
+        this.selectedShapes = [];
+        this.redrawAllShapes();
+        this.updateUndoRedoButtons();
+    }
+
+    redo() {
+        if (this.redoStack.length === 0) return;
+        this.undoStack.push(JSON.parse(JSON.stringify(this.shapes)));
+        this.shapes = this.redoStack.pop();
+        this.selectedShape = null;
+        this.selectedShapes = [];
+        this.redrawAllShapes();
+        this.updateUndoRedoButtons();
+    }
+
+    updateUndoRedoButtons() {
+        const undoBtn = document.querySelector('[data-tool="undo"]');
+        const redoBtn = document.querySelector('[data-tool="redo"]');
+        if (undoBtn) undoBtn.dataset.disabled = this.undoStack.length ? 'false' : 'true';
+        if (redoBtn) redoBtn.dataset.disabled = this.redoStack.length ? 'false' : 'true';
+    }
+
+
     setupColorPicker() {
         const saturationPanel = document.getElementById('webext-saturation-panel');
         const saturationCursor = document.getElementById('webext-saturation-cursor');
@@ -932,22 +960,51 @@ class WebDrawingExtension {
             return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b2.toString(16).padStart(2, '0')}`;
         };
 
+        // Update hex input and preview
+        const updateHexDisplay = (color) => {
+            const hexInput = document.getElementById('webext-hex-input');
+            const preview = document.getElementById('webext-color-preview');
+            if (hexInput) hexInput.value = color.toUpperCase();
+            if (preview) preview.style.background = color;
+        };
+
         // Update color from picker
         const updateColorFromPicker = () => {
             const color = hsbToHex(this.colorPickerHue, this.colorPickerSaturation, this.colorPickerBrightness);
             this.currentColor = color;
             this.updateOpacityTrack();
-            // Save to localStorage
             localStorage.setItem('webext-draw-color', color);
+            updateHexDisplay(color);
 
-            // Update fill color if fill is enabled
             if (this.fillEnabled) {
                 this.fillColor = color;
                 localStorage.setItem('webext-draw-fill-color', color);
             }
-            // Remove active from quick colors
             document.querySelectorAll('.webext-draw-quick-color').forEach(c => c.classList.remove('active'));
         };
+
+        // Hex input handler
+        const hexInput = document.getElementById('webext-hex-input');
+        if (hexInput) {
+            hexInput.addEventListener('change', () => {
+                let val = hexInput.value.trim();
+                if (!val.startsWith('#')) val = '#' + val;
+                if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+                    this.currentColor = val;
+                    this.updateOpacityTrack();
+                    localStorage.setItem('webext-draw-color', val);
+                    updateHexDisplay(val);
+                    if (this.fillEnabled) {
+                        this.fillColor = val;
+                        localStorage.setItem('webext-draw-fill-color', val);
+                    }
+                    document.querySelectorAll('.webext-draw-quick-color').forEach(c => c.classList.remove('active'));
+                }
+            });
+        }
+
+        // Init preview
+        updateHexDisplay(this.currentColor);
 
         // Saturation panel events
         const handleSaturationMove = (e) => {
@@ -1120,6 +1177,7 @@ class WebDrawingExtension {
                     this.moveStartX = e.clientX;
                     this.moveStartY = e.clientY;
                     this.originalShape = JSON.parse(JSON.stringify(this.selectedShape));
+                    this.saveState();
                     this.canvas.style.cursor = 'grabbing';
                     this.redrawAllShapes();
                 }
@@ -1319,6 +1377,7 @@ class WebDrawingExtension {
     finishFreePolygon() {
         if (this.freePolygonPoints.length < 3) return;
 
+        this.saveState();
         const pointsStr = this.freePolygonPoints.map(p => `${p.x},${p.y}`).join(' ');
         this.shapes.push({
             type: 'polygon',
@@ -1609,7 +1668,7 @@ class WebDrawingExtension {
     stopDrawing() {
         if (this.isDrawing) {
             if (this.drawingMode === 'pen' && this.currentPath.length > 1) {
-                // Save pen drawing as a path shape
+                this.saveState();
                 this.shapes.push({
                     type: 'path',
                     points: [...this.currentPath],
@@ -1619,9 +1678,9 @@ class WebDrawingExtension {
                 });
                 this.currentPath = [];
             } else if (this.drawingMode !== 'pen' && this.drawingMode !== 'eraser' && this.drawingMode !== 'move' && this.drawingMode !== 'picker' && this.drawingMode !== 'freepolygon') {
-                // Save shape to array
                 const shape = this.createShapeFromSVG();
                 if (shape) {
+                    this.saveState();
                     this.shapes.push(shape);
                     this.svgToCanvas();
                 }
@@ -1869,6 +1928,7 @@ class WebDrawingExtension {
         this.ctx.textBaseline = 'alphabetic';
 
         // Save text shape
+        this.saveState();
         this.shapes.push({
             type: 'text',
             text: text,
@@ -2518,10 +2578,24 @@ class WebDrawingExtension {
         }
     }
 
+    toggleDrawingsVisibility() {
+        this.drawingsVisible = !this.drawingsVisible;
+        this.canvas.style.opacity = this.drawingsVisible ? '1' : '0';
+        this.svgOverlay.style.opacity = this.drawingsVisible ? '1' : '0';
+        const btn = document.querySelector('[data-tool="toggle-visibility"]');
+        if (btn) {
+            btn.classList.toggle('active', !this.drawingsVisible);
+            btn.querySelector('svg').innerHTML = this.drawingsVisible
+                ? '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'
+                : '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>';
+        }
+    }
+
     deleteSelectedShapes() {
         const toDelete = this.selectedShapes.length > 0 ? this.selectedShapes : (this.selectedShape ? [this.selectedShape] : []);
         if (toDelete.length === 0) return;
 
+        this.saveState();
         this.shapes = this.shapes.filter(s => !toDelete.includes(s));
         this.selectedShape = null;
         this.selectedShapes = [];
@@ -2800,11 +2874,12 @@ class WebDrawingExtension {
         const finalX = Math.max(0, Math.min(newX, maxX));
         const finalY = Math.max(0, Math.min(newY, maxY));
 
-        // Update toolbar position
-        this.uiElement.style.right = 'auto';
-        this.uiElement.style.left = finalX + 'px';
-        this.uiElement.style.top = finalY + 'px';
-        this.uiElement.style.transform = 'none';
+        // Update toolbar position — must use setProperty to override !important from CSS
+        this.uiElement.style.setProperty('right', 'auto', 'important');
+        this.uiElement.style.setProperty('bottom', 'auto', 'important');
+        this.uiElement.style.setProperty('left', finalX + 'px', 'important');
+        this.uiElement.style.setProperty('top', finalY + 'px', 'important');
+        this.uiElement.style.setProperty('transform', 'none', 'important');
 
         // Update toolbar side class for tooltip/popup positioning
         this.updateToolbarSideClass(finalX);
