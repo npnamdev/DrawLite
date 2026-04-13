@@ -4,9 +4,9 @@ class WebDrawingExtension {
         this.isEnabled = false;
         
         // Load saved colors from localStorage or use defaults
-        this.currentColor = localStorage.getItem('webext-draw-color') || '#FF0000';
-        this.fillColor = localStorage.getItem('webext-draw-fill-color') || 'transparent';
-        this.fillEnabled = localStorage.getItem('webext-draw-fill-enabled') === 'true';
+        this.currentColor = '#FF0000';
+        this.fillColor = 'transparent';
+        this.fillEnabled = false;
         
         this.lineWidth = 4;
         this.strokeOpacity = 1; // 0-1
@@ -361,6 +361,21 @@ class WebDrawingExtension {
                             <circle cx="12" cy="13" r="4"/>
                         </svg>
                     </button>
+                    <button class="webext-draw-tool-btn webext-draw-action-btn" data-tool="duplicate" title="Nhân đôi (Ctrl+D)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2"/>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                    </button>
+                    <button class="webext-draw-tool-btn" data-tool="ruler" title="Thước đo">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 4h20v16H2z"/>
+                            <line x1="6" y1="4" x2="6" y2="8"/>
+                            <line x1="10" y1="4" x2="10" y2="10"/>
+                            <line x1="14" y1="4" x2="14" y2="8"/>
+                            <line x1="18" y1="4" x2="18" y2="10"/>
+                        </svg>
+                    </button>
                 </div>
                 <button class="webext-draw-tool-btn" data-tool="toggle-visibility" title="Ẩn/hiện nét vẽ">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -428,17 +443,19 @@ class WebDrawingExtension {
                     <div class="webext-draw-quick-color" data-color="#ff69b4" style="background:#ff69b4"></div>
                     <div class="webext-draw-quick-color" data-color="#32cd32" style="background:#32cd32"></div>
                     <div class="webext-draw-quick-color" data-color="#4169e1" style="background:#4169e1"></div>
-                    <div class="webext-draw-color-hex-row">
-                        <div class="webext-draw-color-preview" id="webext-color-preview"></div>
-                        <input type="text" class="webext-draw-hex-input" id="webext-hex-input" value="#FF0000" maxlength="7" spellcheck="false">
-                    </div>
                 </div>
             </div>
-            <label class="webext-draw-switch-label">
-                <input type="checkbox" id="webext-fill-enabled">
-                <span class="webext-draw-switch"></span>
-                <span>Tô màu bên trong</span>
-            </label>
+            <div class="webext-draw-color-bottom">
+                <div class="webext-draw-color-hex-row">
+                    <div class="webext-draw-color-preview" id="webext-color-preview"></div>
+                    <input type="text" class="webext-draw-hex-input" id="webext-hex-input" value="#FF0000" maxlength="7" spellcheck="false">
+                </div>
+                <label class="webext-draw-switch-label">
+                    <input type="checkbox" id="webext-fill-enabled">
+                    <span class="webext-draw-switch"></span>
+                    <span>Tô màu nền</span>
+                </label>
+            </div>
         `;
         document.body.appendChild(colorPopup);
 
@@ -654,9 +671,13 @@ class WebDrawingExtension {
                     return;
                 }
 
-                // Handle pin tools
+                // Handle action tools
                 if (tool === 'toggle-visibility') {
                     this.toggleDrawingsVisibility();
+                    return;
+                }
+                if (tool === 'duplicate') {
+                    this.duplicateSelected();
                     return;
                 }
                 if (tool === 'pin-left') {
@@ -689,12 +710,10 @@ class WebDrawingExtension {
                 this.currentColor = color;
                 this.updateOpacityTrack();
                 // Save to localStorage
-                localStorage.setItem('webext-draw-color', color);
 
                 // Update fill color if fill is enabled
                 if (this.fillEnabled) {
                     this.fillColor = color;
-                    localStorage.setItem('webext-draw-fill-color', color);
                 }
                 quickColors.forEach(c => c.classList.remove('active'));
                 e.target.classList.add('active');
@@ -774,12 +793,10 @@ class WebDrawingExtension {
         fillEnabledCheckbox.addEventListener('change', (e) => {
             this.fillEnabled = e.target.checked;
             // Save to localStorage
-            localStorage.setItem('webext-draw-fill-enabled', this.fillEnabled);
             
             // When fill is enabled, use current stroke color as fill color
             if (this.fillEnabled) {
                 this.fillColor = this.currentColor;
-                localStorage.setItem('webext-draw-fill-color', this.currentColor);
             }
         });
 
@@ -847,6 +864,12 @@ class WebDrawingExtension {
             if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') || ((e.ctrlKey || e.metaKey) && e.key === 'y')) {
                 e.preventDefault();
                 this.redo();
+                return;
+            }
+            // Duplicate: Ctrl+D
+            if ((e.ctrlKey || e.metaKey) && e.key === 'd' && this.isEnabled) {
+                e.preventDefault();
+                this.duplicateSelected();
                 return;
             }
 
@@ -973,12 +996,10 @@ class WebDrawingExtension {
             const color = hsbToHex(this.colorPickerHue, this.colorPickerSaturation, this.colorPickerBrightness);
             this.currentColor = color;
             this.updateOpacityTrack();
-            localStorage.setItem('webext-draw-color', color);
             updateHexDisplay(color);
 
             if (this.fillEnabled) {
                 this.fillColor = color;
-                localStorage.setItem('webext-draw-fill-color', color);
             }
             document.querySelectorAll('.webext-draw-quick-color').forEach(c => c.classList.remove('active'));
         };
@@ -992,11 +1013,9 @@ class WebDrawingExtension {
                 if (/^#[0-9a-fA-F]{6}$/.test(val)) {
                     this.currentColor = val;
                     this.updateOpacityTrack();
-                    localStorage.setItem('webext-draw-color', val);
                     updateHexDisplay(val);
                     if (this.fillEnabled) {
                         this.fillColor = val;
-                        localStorage.setItem('webext-draw-fill-color', val);
                     }
                     document.querySelectorAll('.webext-draw-quick-color').forEach(c => c.classList.remove('active'));
                 }
@@ -1202,6 +1221,8 @@ class WebDrawingExtension {
             this.freePolygonPoints.push({ x: e.clientX, y: e.clientY });
             this.isDrawing = false; // Don't track as dragging
             this.drawFreePolygonPreview(e.clientX, e.clientY);
+        } else if (this.drawingMode === 'ruler') {
+            this.rulerStart = { x: e.clientX, y: e.clientY };
         } else if (this.drawingMode !== 'pen' && this.drawingMode !== 'eraser') {
             this.svgOverlay.style.pointerEvents = 'auto';
         }
@@ -1273,6 +1294,7 @@ class WebDrawingExtension {
                     }));
                 } else if (this.selectedShape.type === 'text' ||
                     this.selectedShape.type === 'rect' ||
+                    this.selectedShape.type === 'note' ||
                     this.selectedShape.type === 'circle') {
                     this.selectedShape.x = this.originalShape.x + deltaX;
                     this.selectedShape.y = this.originalShape.y + deltaY;
@@ -1329,6 +1351,39 @@ class WebDrawingExtension {
                 this.ctx.fillStyle = 'rgba(0, 123, 255, 0.08)';
                 this.ctx.fillRect(mx, my, mw, mh);
             }
+        } else if (this.drawingMode === 'ruler' && this.rulerStart) {
+            // Draw ruler measurement line
+            this.redrawAllShapes();
+            const sx = this.rulerStart.x, sy = this.rulerStart.y;
+            const ex = e.clientX, ey = e.clientY;
+            const dist = Math.round(Math.sqrt(Math.pow(ex - sx, 2) + Math.pow(ey - sy, 2)));
+
+            this.ctx.strokeStyle = '#ff4444';
+            this.ctx.lineWidth = 1.5;
+            this.ctx.setLineDash([6, 3]);
+            this.ctx.beginPath();
+            this.ctx.moveTo(sx, sy);
+            this.ctx.lineTo(ex, ey);
+            this.ctx.stroke();
+            this.ctx.setLineDash([]);
+
+            // Draw endpoints
+            [{ x: sx, y: sy }, { x: ex, y: ey }].forEach(p => {
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+                this.ctx.fillStyle = '#ff4444';
+                this.ctx.fill();
+            });
+
+            // Draw distance label
+            const midX = (sx + ex) / 2, midY = (sy + ey) / 2;
+            const label = `${dist}px`;
+            this.ctx.font = 'bold 12px sans-serif';
+            const tw = this.ctx.measureText(label).width;
+            this.ctx.fillStyle = '#ff4444';
+            this.ctx.fillRect(midX - tw / 2 - 4, midY - 18, tw + 8, 20);
+            this.ctx.fillStyle = 'white';
+            this.ctx.fillText(label, midX - tw / 2, midY - 3);
         } else {
             this.drawShape(e.clientX, e.clientY);
         }
@@ -1390,6 +1445,51 @@ class WebDrawingExtension {
         });
         this.freePolygonPoints = [];
         this.redrawAllShapes();
+    }
+
+    showNoteInput(x, y) {
+        this.canvas.style.pointerEvents = 'none';
+
+        const note = document.createElement('div');
+        note.style.cssText = `
+            position: fixed; left: ${x}px; top: ${y}px;
+            min-width: 150px; min-height: 80px; max-width: 300px;
+            background: #fff9c4; border: 1px solid #f0e68c;
+            border-radius: 6px; padding: 8px; font-size: 13px;
+            font-family: sans-serif; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            z-index: 2147483647; outline: none; cursor: text;
+            white-space: pre-wrap; word-wrap: break-word;
+        `;
+        note.contentEditable = 'true';
+        note.setAttribute('placeholder', 'Type a note...');
+        document.body.appendChild(note);
+        note.focus();
+
+        const finishNote = () => {
+            const text = note.innerText.trim();
+            if (text) {
+                this.saveState();
+                this.shapes.push({
+                    type: 'note',
+                    text: text,
+                    x: x,
+                    y: y,
+                    color: '#333',
+                    bgColor: '#fff9c4',
+                    fontSize: 13,
+                    opacity: this.strokeOpacity
+                });
+                this.redrawAllShapes();
+            }
+            note.remove();
+            this.canvas.style.pointerEvents = 'auto';
+            this.updateCursor();
+        };
+
+        note.addEventListener('blur', () => setTimeout(finishNote, 100));
+        note.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { note.remove(); this.canvas.style.pointerEvents = 'auto'; this.updateCursor(); }
+        });
     }
 
     drawShape(currentX, currentY) {
@@ -1677,6 +1777,10 @@ class WebDrawingExtension {
                     opacity: this.strokeOpacity
                 });
                 this.currentPath = [];
+            } else if (this.drawingMode === 'ruler') {
+                // Ruler is temporary - just clear it
+                this.rulerStart = null;
+                this.redrawAllShapes();
             } else if (this.drawingMode !== 'pen' && this.drawingMode !== 'eraser' && this.drawingMode !== 'move' && this.drawingMode !== 'picker' && this.drawingMode !== 'freepolygon') {
                 const shape = this.createShapeFromSVG();
                 if (shape) {
@@ -1855,23 +1959,9 @@ class WebDrawingExtension {
                 const result = await eyeDropper.open();
                 const hexColor = result.sRGBHex;
 
-                // Copy to clipboard
+                // Copy to clipboard only
                 await navigator.clipboard.writeText(hexColor);
-
-                // Show notification
                 this.showColorNotification(hexColor);
-
-                // Set as current color
-                this.currentColor = hexColor;
-                this.updateOpacityTrack();
-                // Save to localStorage
-                localStorage.setItem('webext-draw-color', hexColor);
-
-                // Update fill color if fill is enabled
-                if (this.fillEnabled) {
-                    this.fillColor = hexColor;
-                    localStorage.setItem('webext-draw-fill-color', hexColor);
-                }
             } else {
                 this.showColorNotification('Browser does not support EyeDropper API');
             }
@@ -2135,9 +2225,10 @@ class WebDrawingExtension {
                     y >= shape.y && y <= shape.y + shape.fontSize) {
                     return shape;
                 }
-            } else if (shape.type === 'rect') {
-                if (x >= shape.x && x <= shape.x + shape.width &&
-                    y >= shape.y && y <= shape.y + shape.height) {
+            } else if (shape.type === 'rect' || shape.type === 'note') {
+                const w = shape.width || 150, h = shape.height || 80;
+                if (x >= shape.x && x <= shape.x + w &&
+                    y >= shape.y && y <= shape.y + h) {
                     return shape;
                 }
             } else if (shape.type === 'circle') {
@@ -2411,8 +2502,8 @@ class WebDrawingExtension {
     getShapeBounds(shape) {
         let bounds = { x: 0, y: 0, width: 0, height: 0 };
 
-        if (shape.type === 'rect' || shape.type === 'highlight') {
-            bounds = { x: shape.x, y: shape.y, width: shape.width, height: shape.height };
+        if (shape.type === 'rect' || shape.type === 'highlight' || shape.type === 'note') {
+            bounds = { x: shape.x, y: shape.y, width: shape.width || 150, height: shape.height || 80 };
         } else if (shape.type === 'circle') {
             bounds = { x: shape.x - shape.radius, y: shape.y - shape.radius, width: shape.radius * 2, height: shape.radius * 2 };
         } else if (shape.type === 'ellipse') {
@@ -2591,6 +2682,128 @@ class WebDrawingExtension {
         }
     }
 
+    // === Toggle visibility ===
+    toggleDrawingsVisibility() {
+        this.drawingsVisible = !this.drawingsVisible;
+        const btn = document.querySelector('[data-tool="toggle-visibility"]');
+        if (this.drawingsVisible) {
+            this.canvas.style.opacity = '1';
+            this.svgOverlay.style.opacity = '1';
+            btn?.classList.remove('active');
+        } else {
+            this.canvas.style.opacity = '0';
+            this.svgOverlay.style.opacity = '0';
+            btn?.classList.add('active');
+        }
+    }
+
+    // === Duplicate selected shape ===
+    duplicateSelected() {
+        const source = this.selectedShape;
+        if (!source) return;
+        this.saveState();
+        const copy = JSON.parse(JSON.stringify(source));
+        // Offset the copy
+        const offset = 20;
+        if (copy.type === 'path') {
+            copy.points = copy.points.map(p => ({ x: p.x + offset, y: p.y + offset }));
+        } else if (copy.x != null) {
+            copy.x += offset; copy.y += offset;
+        } else if (copy.x1 != null) {
+            copy.x1 += offset; copy.y1 += offset; copy.x2 += offset; copy.y2 += offset;
+        } else if (copy.cx != null) {
+            copy.cx += offset; copy.cy += offset;
+        } else if (copy.points && typeof copy.points === 'string') {
+            copy.points = copy.points.split(' ').map(p => {
+                const [x, y] = p.split(',').map(Number);
+                return `${x + offset},${y + offset}`;
+            }).join(' ');
+        } else if (copy.d) {
+            let i = 0;
+            copy.d = copy.d.replace(/-?[\d.]+/g, (m) => {
+                const v = parseFloat(m) + offset;
+                return v.toFixed(1);
+            });
+        }
+        this.shapes.push(copy);
+        this.selectedShape = copy;
+        this.selectedShapes = [copy];
+        this.redrawAllShapes();
+    }
+
+    // === Lock/Unlock selected shape ===
+    toggleLockSelected() {
+        const shape = this.selectedShape;
+        if (!shape) return;
+        shape.locked = !shape.locked;
+        const btn = document.querySelector('[data-tool="lock"]');
+        if (shape.locked) {
+            btn?.classList.add('active');
+        } else {
+            btn?.classList.remove('active');
+        }
+        this.redrawAllShapes();
+    }
+
+    // === Export PNG ===
+    exportPNG() {
+        // Create a temp canvas with just the drawings
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = this.canvas.width;
+        tempCanvas.height = this.canvas.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        const dpr = window.devicePixelRatio || 1;
+        tempCtx.scale(dpr, dpr);
+        // Draw white background
+        tempCtx.fillStyle = 'white';
+        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+        // Draw current canvas content
+        tempCtx.drawImage(this.canvas, 0, 0);
+
+        const link = document.createElement('a');
+        link.download = 'drawlite-export.png';
+        link.href = tempCanvas.toDataURL('image/png');
+        link.click();
+    }
+
+    // === Grid toggle ===
+    toggleGrid() {
+        this.showGrid = !this.showGrid;
+        const btn = document.querySelector('[data-tool="grid"]');
+        if (this.showGrid) {
+            btn?.classList.add('active');
+        } else {
+            btn?.classList.remove('active');
+        }
+        this.redrawAllShapes();
+    }
+
+    drawGrid() {
+        if (!this.showGrid) return;
+        const w = this.canvas.width / (window.devicePixelRatio || 1);
+        const h = this.canvas.height / (window.devicePixelRatio || 1);
+        this.ctx.strokeStyle = 'rgba(0,0,0,0.07)';
+        this.ctx.lineWidth = 0.5;
+        for (let x = 0; x <= w; x += this.gridSize) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, 0);
+            this.ctx.lineTo(x, h);
+            this.ctx.stroke();
+        }
+        for (let y = 0; y <= h; y += this.gridSize) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, y);
+            this.ctx.lineTo(w, y);
+            this.ctx.stroke();
+        }
+    }
+
+    // === Snap to grid ===
+    snapToGrid(val) {
+        if (!this.showGrid) return val;
+        return Math.round(val / this.gridSize) * this.gridSize;
+    }
+
     deleteSelectedShapes() {
         const toDelete = this.selectedShapes.length > 0 ? this.selectedShapes : (this.selectedShape ? [this.selectedShape] : []);
         if (toDelete.length === 0) return;
@@ -2625,6 +2838,44 @@ class WebDrawingExtension {
                     }
                 });
                 this.ctx.stroke();
+            } else if (shape.type === 'note') {
+                // Draw sticky note
+                const padding = 8;
+                this.ctx.font = `${shape.fontSize || 13}px sans-serif`;
+                const lines = shape.text.split('\n');
+                const lineHeight = (shape.fontSize || 13) * 1.4;
+                const maxW = Math.max(...lines.map(l => this.ctx.measureText(l).width));
+                const noteW = maxW + padding * 2;
+                const noteH = lines.length * lineHeight + padding * 2;
+
+                // Background
+                this.ctx.fillStyle = shape.bgColor || '#fff9c4';
+                this.ctx.shadowColor = 'rgba(0,0,0,0.12)';
+                this.ctx.shadowBlur = 6;
+                this.ctx.shadowOffsetY = 2;
+                this.ctx.beginPath();
+                this.ctx.roundRect(shape.x, shape.y, noteW, noteH, 6);
+                this.ctx.fill();
+                this.ctx.shadowColor = 'transparent';
+                this.ctx.shadowBlur = 0;
+                this.ctx.shadowOffsetY = 0;
+
+                // Border
+                this.ctx.strokeStyle = '#f0e68c';
+                this.ctx.lineWidth = 1;
+                this.ctx.stroke();
+
+                // Text
+                this.ctx.fillStyle = shape.color || '#333';
+                this.ctx.textBaseline = 'top';
+                lines.forEach((line, i) => {
+                    this.ctx.fillText(line, shape.x + padding, shape.y + padding + i * lineHeight);
+                });
+                this.ctx.textBaseline = 'alphabetic';
+
+                // Store computed dimensions for hit testing
+                shape.width = noteW;
+                shape.height = noteH;
             } else if (shape.type === 'text') {
                 const fontFamily = shape.fontFamily || 'Nunito, Arial, sans-serif';
                 const fontWeight = shape.fontWeight || '700';
@@ -3021,6 +3272,9 @@ class WebDrawingExtension {
                 break;
             case 'text':
                 this.canvas.style.cursor = 'text';
+                break;
+            case 'ruler':
+                this.canvas.style.cursor = 'crosshair';
                 break;
             default:
                 this.canvas.style.cursor = 'crosshair';

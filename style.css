@@ -96,9 +96,13 @@
     display: none !important;
 }
 
-/* Disabled state for undo/redo — uses color not opacity so tooltips stay crisp */
+/* Disabled state for undo/redo */
 .webext-draw-tool-btn[data-disabled="true"] {
     color: #ccc !important;
+    pointer-events: none !important;
+}
+.webext-draw-tool-btn[data-disabled="false"] {
+    pointer-events: auto !important;
 }
 
 /* Custom tooltips - show above for horizontal toolbar */
@@ -340,12 +344,12 @@
 /* Color Picker - Photoshop style */
 .webext-color-popup-layout {
     display: flex;
-    gap: 12px;
+    gap: 8px;
 }
 
 .webext-color-picker-container {
     display: flex;
-    gap: 8px;
+    gap: 6px;
 }
 
 .webext-color-picker-saturation {
@@ -418,16 +422,16 @@
 
 .webext-draw-quick-colors {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, 24px);
     gap: 4px;
-    justify-items: center;
+    justify-content: start;
     align-content: start;
 }
 
 .webext-draw-quick-color {
-    width: 26px;
-    height: 26px;
-    border-radius: 6px;
+    width: 24px;
+    height: 24px;
+    border-radius: 5px;
     cursor: pointer;
     border: 2px solid #e0e0e0;
     transition: all 0.2s ease;
@@ -447,29 +451,36 @@
     transform: scale(1.1);
 }
 
+.webext-draw-color-bottom {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin-top: 8px !important;
+    padding-top: 8px !important;
+    border-top: 1px solid #eee !important;
+}
+
 .webext-draw-color-hex-row {
-    grid-column: 1 / -1;
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-top: 4px;
+    gap: 5px;
+    flex: 1;
 }
 
 .webext-draw-color-preview {
-    width: 26px;
-    height: 26px;
-    border-radius: 6px;
+    width: 24px;
+    height: 24px;
+    border-radius: 5px;
     border: 2px solid #e0e0e0;
     flex-shrink: 0;
     background: #FF0000;
 }
 
 .webext-draw-hex-input {
-    flex: 1;
-    min-width: 0;
-    height: 26px;
+    width: 70px;
+    height: 24px;
     border: 1px solid #e0e0e0;
-    border-radius: 6px;
+    border-radius: 5px;
     padding: 0 6px;
     font-size: 11px;
     font-family: monospace;
@@ -578,10 +589,14 @@
 .webext-draw-switch-label {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     cursor: pointer;
-    font-size: 13px;
-    margin-top: 10px;
+    font-size: 11px;
+    white-space: nowrap;
+    margin: 0;
+    padding: 0;
+    border: none;
+    flex-shrink: 0;
 }
 
 .webext-draw-switch {
