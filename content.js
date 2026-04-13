@@ -8,7 +8,7 @@ class WebDrawingExtension {
         this.fillColor = localStorage.getItem('webext-draw-fill-color') || 'transparent';
         this.fillEnabled = localStorage.getItem('webext-draw-fill-enabled') === 'true';
         
-        this.lineWidth = 3;
+        this.lineWidth = 4;
         this.canvas = null;
         this.ctx = null;
         this.svgOverlay = null;
@@ -23,6 +23,9 @@ class WebDrawingExtension {
         this.isToolbarCollapsed = false;
         this.shapes = []; // Store all shapes for movement
         this.selectedShape = null; // Currently selected shape for moving
+        this.selectedShapes = []; // Multiple selected shapes
+        this.isMarqueeSelecting = false; // Marquee selection state
+        this.marqueeStart = null; // Marquee start point
         this.moveOffsetX = 0;
         this.moveOffsetY = 0;
         this.originalShape = null; // Store original shape position for delta calculation
@@ -735,6 +738,13 @@ class WebDrawingExtension {
         }, { passive: false });
 
         document.addEventListener('keydown', (e) => {
+            if ((e.key === 'Delete' || e.key === 'Backspace') && this.isEnabled && this.drawingMode === 'move') {
+                // Don't delete if user is typing in an input
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+                e.preventDefault();
+                this.deleteSelectedShapes();
+                return;
+            }
             if (e.key === 'Escape') {
                 this.disableDrawing();
                 this.closeAllPopups();
@@ -758,6 +768,7 @@ class WebDrawingExtension {
                 this.updateCursor();
                 // Reset move state
                 this.selectedShape = null;
+                this.selectedShapes = [];
                 this.originalShape = null;
                 return false;
             }
@@ -963,20 +974,36 @@ class WebDrawingExtension {
                 }
             }
 
-            // Select shape or deselect if clicking empty area
+            // Select shape or start marquee if clicking empty area
             const clickedShape = this.getShapeAtPoint(e.clientX, e.clientY);
             if (clickedShape) {
-                this.selectedShape = clickedShape;
-                this.moveStartX = e.clientX;
-                this.moveStartY = e.clientY;
-                this.originalShape = JSON.parse(JSON.stringify(this.selectedShape));
-                this.canvas.style.cursor = 'grabbing';
-                this.redrawAllShapes();
+                // If holding Shift, toggle shape in multi-selection
+                if (e.shiftKey) {
+                    const idx = this.selectedShapes.indexOf(clickedShape);
+                    if (idx >= 0) {
+                        this.selectedShapes.splice(idx, 1);
+                    } else {
+                        this.selectedShapes.push(clickedShape);
+                    }
+                    this.selectedShape = this.selectedShapes.length > 0 ? this.selectedShapes[this.selectedShapes.length - 1] : null;
+                    this.redrawAllShapes();
+                    this.isDrawing = false;
+                } else {
+                    this.selectedShape = clickedShape;
+                    this.selectedShapes = [clickedShape];
+                    this.moveStartX = e.clientX;
+                    this.moveStartY = e.clientY;
+                    this.originalShape = JSON.parse(JSON.stringify(this.selectedShape));
+                    this.canvas.style.cursor = 'grabbing';
+                    this.redrawAllShapes();
+                }
             } else {
-                // Deselect if clicking empty area
+                // Start marquee selection on empty area
                 this.selectedShape = null;
+                this.selectedShapes = [];
+                this.isMarqueeSelecting = true;
+                this.marqueeStart = { x: e.clientX, y: e.clientY };
                 this.redrawAllShapes();
-                this.isDrawing = false;
             }
         } else if (this.drawingMode === 'picker') {
             this.pickColor(e.clientX, e.clientY);
@@ -1078,6 +1105,23 @@ class WebDrawingExtension {
                 }
 
                 this.redrawAllShapes();
+            }
+
+            // Draw marquee selection rectangle
+            if (this.isMarqueeSelecting && this.marqueeStart) {
+                this.marqueeEnd = { x: e.clientX, y: e.clientY };
+                this.redrawAllShapes();
+                const mx = Math.min(this.marqueeStart.x, e.clientX);
+                const my = Math.min(this.marqueeStart.y, e.clientY);
+                const mw = Math.abs(e.clientX - this.marqueeStart.x);
+                const mh = Math.abs(e.clientY - this.marqueeStart.y);
+                this.ctx.strokeStyle = '#007bff';
+                this.ctx.lineWidth = 1;
+                this.ctx.setLineDash([4, 4]);
+                this.ctx.strokeRect(mx, my, mw, mh);
+                this.ctx.setLineDash([]);
+                this.ctx.fillStyle = 'rgba(0, 123, 255, 0.08)';
+                this.ctx.fillRect(mx, my, mw, mh);
             }
         } else {
             this.drawShape(e.clientX, e.clientY);
@@ -1346,6 +1390,28 @@ class WebDrawingExtension {
 
         // Handle move mode - reset cursor
         if (this.drawingMode === 'move') {
+            // Finalize marquee selection
+            if (this.isMarqueeSelecting && this.marqueeStart && this.marqueeEnd) {
+                const mx = Math.min(this.marqueeStart.x, this.marqueeEnd.x);
+                const my = Math.min(this.marqueeStart.y, this.marqueeEnd.y);
+                const mw = Math.abs(this.marqueeEnd.x - this.marqueeStart.x);
+                const mh = Math.abs(this.marqueeEnd.y - this.marqueeStart.y);
+
+                if (mw > 5 || mh > 5) {
+                    // Select all shapes that intersect with the marquee rectangle
+                    this.selectedShapes = this.shapes.filter(shape => {
+                        const bounds = this.getShapeBounds(shape);
+                        return bounds.x < mx + mw && bounds.x + bounds.width > mx &&
+                               bounds.y < my + mh && bounds.y + bounds.height > my;
+                    });
+                    this.selectedShape = this.selectedShapes.length > 0 ? this.selectedShapes[0] : null;
+                }
+                this.isMarqueeSelecting = false;
+                this.marqueeStart = null;
+                this.marqueeEnd = null;
+                this.redrawAllShapes();
+            }
+
             if (this.isSpacePressed) {
                 this.canvas.style.cursor = 'grab';
             } else {
@@ -1367,6 +1433,7 @@ class WebDrawingExtension {
         // Don't deselect shape in move mode - keep it selected
         if (this.drawingMode !== 'move') {
             this.selectedShape = null;
+            this.selectedShapes = [];
         }
         this.originalShape = null;
         this.svgOverlay.style.pointerEvents = 'none';
@@ -2172,6 +2239,16 @@ class WebDrawingExtension {
     }
 
 
+    deleteSelectedShapes() {
+        const toDelete = this.selectedShapes.length > 0 ? this.selectedShapes : (this.selectedShape ? [this.selectedShape] : []);
+        if (toDelete.length === 0) return;
+
+        this.shapes = this.shapes.filter(s => !toDelete.includes(s));
+        this.selectedShape = null;
+        this.selectedShapes = [];
+        this.redrawAllShapes();
+    }
+
     redrawAllShapes() {
         // Clear canvas
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -2306,10 +2383,22 @@ class WebDrawingExtension {
             }
         });
 
-        // Draw resize handles if a shape is selected
-        if (this.selectedShape && this.drawingMode === 'move') {
-            const bounds = this.getShapeBounds(this.selectedShape);
-            this.drawResizeHandles(bounds);
+        // Draw selection indicators
+        if (this.drawingMode === 'move') {
+            if (this.selectedShapes.length > 1) {
+                // Draw selection border for each multi-selected shape
+                this.selectedShapes.forEach(shape => {
+                    const bounds = this.getShapeBounds(shape);
+                    this.ctx.strokeStyle = '#007bff';
+                    this.ctx.lineWidth = 1;
+                    this.ctx.setLineDash([5, 5]);
+                    this.ctx.strokeRect(bounds.x - 3, bounds.y - 3, bounds.width + 6, bounds.height + 6);
+                    this.ctx.setLineDash([]);
+                });
+            } else if (this.selectedShape) {
+                const bounds = this.getShapeBounds(this.selectedShape);
+                this.drawResizeHandles(bounds);
+            }
         }
     }
 
