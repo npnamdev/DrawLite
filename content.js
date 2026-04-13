@@ -9,6 +9,7 @@ class WebDrawingExtension {
         this.fillEnabled = localStorage.getItem('webext-draw-fill-enabled') === 'true';
         
         this.lineWidth = 4;
+        this.strokeOpacity = 1; // 0-1
         this.canvas = null;
         this.ctx = null;
         this.svgOverlay = null;
@@ -30,6 +31,7 @@ class WebDrawingExtension {
         this.moveOffsetY = 0;
         this.originalShape = null; // Store original shape position for delta calculation
         this.currentPath = []; // Store current pen drawing path
+        this.freePolygonPoints = []; // Store free polygon points
         this.isDragging = false; // Track toolbar dragging state
         this.justFinishedDragging = false; // Flag to prevent popup close after drag
         this.dragStartX = 0;
@@ -160,6 +162,7 @@ class WebDrawingExtension {
         this.createSVGOverlay();
         this.createUI();
         this.setupEventListeners();
+        this.updateOpacityTrack();
         this.isInitialized = true;
         this.showToolbar(); // Show toolbar directly instead of toggle button
         this.enableDrawing(); // Enable drawing by default
@@ -289,7 +292,7 @@ class WebDrawingExtension {
         ui.style.display = 'none';
         ui.innerHTML = `
             <div class="webext-draw-toolbar">
-                <div class="webext-drag-handle" title="Kéo để di chuyển thanh công cụ">
+                <div class="webext-drag-handle" title="Kéo để di chuyển">
                     <div class="webext-drag-dots">
                         <span></span><span></span>
                         <span></span><span></span>
@@ -298,13 +301,13 @@ class WebDrawingExtension {
                 </div>
                 <div class="webext-draw-toolbar-content">
                     <!-- Drawing Tools -->
-                    <button class="webext-draw-tool-btn" data-tool="pen" title="Vẽ tự do (Bút)">
+                    <button class="webext-draw-tool-btn" data-tool="pen" title="Bút vẽ">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <path d="M12 19l7-7 3 3-7 7-3-3z"/>
                             <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
                         </svg>
                     </button>
-                    <button class="webext-draw-tool-btn" data-tool="text" title="Viết chữ">
+                    <button class="webext-draw-tool-btn" data-tool="text" title="Chữ">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <polyline points="4 7 4 4 20 4 20 7"/>
                             <line x1="9" y1="20" x2="15" y2="20"/>
@@ -320,7 +323,7 @@ class WebDrawingExtension {
                         </svg>
                     </button>
                     <!-- Edit Tools -->
-                    <button class="webext-draw-tool-btn" data-tool="move" title="Di chuyển hình đã vẽ">
+                    <button class="webext-draw-tool-btn" data-tool="move" title="Di chuyển">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <polyline points="5 9 2 12 5 15"/>
                             <polyline points="9 5 12 2 15 5"/>
@@ -330,14 +333,14 @@ class WebDrawingExtension {
                             <line x1="12" y1="2" x2="12" y2="22"/>
                         </svg>
                     </button>
-                    <button class="webext-draw-tool-btn" data-tool="eraser" title="Tẩy (Xóa)">
+                    <button class="webext-draw-tool-btn" data-tool="eraser" title="Tẩy">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <path d="M20 20H7l-4-4a1 1 0 0 1 0-1.414l9-9a1 1 0 0 1 1.414 0l7 7a1 1 0 0 1 0 1.414l-4 4"/>
                             <line x1="11" y1="11" x2="17" y2="17"/>
                         </svg>
                     </button>
                     <!-- Settings -->
-                    <button class="webext-draw-tool-btn" data-tool="color" title="Chọn màu vẽ">
+                    <button class="webext-draw-tool-btn" data-tool="color" title="Màu sắc">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M19 12H2"/>
                             <path d="M21.145 18.38A3.34 3.34 0 0 1 20 16.5a3.3 3.3 0 0 1-1.145 1.88c-.575.46-.855 1.02-.855 1.595A2 2 0 0 0 20 22a2 2 0 0 0 2-2.025c0-.58-.285-1.13-.855-1.595"/>
@@ -345,13 +348,13 @@ class WebDrawingExtension {
                             <path d="m8.5 4.5 2.148-2.148a1.205 1.205 0 0 1 1.704 0l7.296 7.296a1.205 1.205 0 0 1 0 1.704l-7.592 7.592a3.615 3.615 0 0 1-5.112 0l-3.888-3.888a3.615 3.615 0 0 1 0-5.112L5.67 7.33"/>
                         </svg>
                     </button>
-                    <button class="webext-draw-tool-btn" data-tool="size" title="Độ dày nét vẽ">
+                    <button class="webext-draw-tool-btn" data-tool="size" title="Kích thước">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="12" cy="12" r="10"/>
                             <circle cx="12" cy="12" r="1"/>
                         </svg>
                     </button>
-                    <button class="webext-draw-tool-btn" data-tool="picker" title="Lấy màu từ màn hình">
+                    <button class="webext-draw-tool-btn" data-tool="picker" title="Lấy màu">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="m12 9-8.414 8.414A2 2 0 0 0 3 18.828v1.344a2 2 0 0 1-.586 1.414A2 2 0 0 1 3.828 21h1.344a2 2 0 0 0 1.414-.586L15 12"/>
                             <path d="m18 9 .4.4a1 1 0 1 1-3 3l-3.8-3.8a1 1 0 1 1 3-3l.4.4 3.4-3.4a1 1 0 1 1 3 3z"/>
@@ -373,7 +376,7 @@ class WebDrawingExtension {
                         </svg>
                     </button>
                 </div>
-                <button class="webext-draw-close-btn" title="Tắt extension">
+                <button class="webext-draw-close-btn" title="Đóng">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <line x1="18" y1="6" x2="6" y2="18"/>
                         <line x1="6" y1="6" x2="18" y2="18"/>
@@ -432,9 +435,23 @@ class WebDrawingExtension {
         sizePopup.className = 'webext-draw-popup';
         sizePopup.style.display = 'none';
         sizePopup.innerHTML = `
-            <div class="webext-draw-size-controls">
-                <input type="range" id="webext-line-width" min="1" max="50" value="3">
-                <span id="webext-draw-size-value">3</span>
+            <div class="webext-draw-slider-group">
+                <div class="webext-draw-slider-track webext-draw-opacity-track">
+                    <input type="range" id="webext-stroke-opacity" min="1" max="100" value="100">
+                </div>
+                <div class="webext-draw-slider-label">
+                    <span>Transp.</span>
+                    <span id="webext-draw-opacity-value">100%</span>
+                </div>
+            </div>
+            <div class="webext-draw-slider-group">
+                <div class="webext-draw-slider-track webext-draw-size-track">
+                    <input type="range" id="webext-line-width" min="1" max="50" value="4">
+                </div>
+                <div class="webext-draw-slider-label">
+                    <span>Size</span>
+                    <span id="webext-draw-size-value">4</span>
+                </div>
             </div>
         `;
         document.body.appendChild(sizePopup);
@@ -491,7 +508,7 @@ class WebDrawingExtension {
                         <path d="M12 2L22 9L18 21H6L2 9L12 2z"/>
                     </svg>
                 </button>
-                <button class="webext-draw-shape-btn" data-shape="ellipse" title="Hình elip">
+                <button class="webext-draw-shape-btn" data-shape="ellipse" title="Elip">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <ellipse cx="12" cy="12" rx="10" ry="6"/>
                     </svg>
@@ -508,6 +525,28 @@ class WebDrawingExtension {
                         <line x1="3" y1="13" x2="21" y2="13"/>
                     </svg>
                 </button>
+                <button class="webext-draw-shape-btn" data-shape="curve" title="Đường cong">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M4 20 Q12 4 20 20" stroke-linecap="round"/>
+                    </svg>
+                </button>
+                <button class="webext-draw-shape-btn" data-shape="bezier" title="Bezier">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M4 18 C4 6 20 6 20 18" stroke-linecap="round"/>
+                        <circle cx="4" cy="18" r="2" fill="currentColor"/>
+                        <circle cx="20" cy="18" r="2" fill="currentColor"/>
+                    </svg>
+                </button>
+                <button class="webext-draw-shape-btn" data-shape="freepolygon" title="Đa giác tự do">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M4 18 L8 6 L16 4 L20 14 L14 20 Z" stroke-linejoin="round"/>
+                        <circle cx="4" cy="18" r="1.5" fill="currentColor"/>
+                        <circle cx="8" cy="6" r="1.5" fill="currentColor"/>
+                        <circle cx="16" cy="4" r="1.5" fill="currentColor"/>
+                        <circle cx="20" cy="14" r="1.5" fill="currentColor"/>
+                        <circle cx="14" cy="20" r="1.5" fill="currentColor"/>
+                    </svg>
+                </button>
             </div>
         `;
         document.body.appendChild(shapesPopup);
@@ -519,14 +558,14 @@ class WebDrawingExtension {
         screenshotPopup.style.display = 'none';
         screenshotPopup.innerHTML = `
             <div class="webext-draw-screenshot-grid">
-                <button class="webext-draw-screenshot-btn" data-screenshot="region" title="Chụp theo vùng">
+                <button class="webext-draw-screenshot-btn" data-screenshot="region" title="Chụp vùng">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="4 2"/>
                         <path d="M9 9h6v6H9z"/>
                     </svg>
                     <span>Chụp vùng</span>
                 </button>
-                <button class="webext-draw-screenshot-btn" data-screenshot="fullscreen" title="Chụp toàn màn hình">
+                <button class="webext-draw-screenshot-btn" data-screenshot="fullscreen" title="Toàn màn hình">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <rect x="2" y="3" width="20" height="14" rx="2"/>
                         <line x1="8" y1="21" x2="16" y2="21"/>
@@ -602,6 +641,12 @@ class WebDrawingExtension {
                 }
 
                 // Handle drawing tools
+                // Finish any in-progress free polygon
+                if (this.freePolygonPoints.length >= 3) {
+                    this.finishFreePolygon();
+                } else {
+                    this.freePolygonPoints = [];
+                }
                 toolButtons.forEach(b => b.classList.remove('active'));
                 button.classList.add('active');
                 this.drawingMode = tool;
@@ -614,9 +659,10 @@ class WebDrawingExtension {
             item.addEventListener('click', (e) => {
                 const color = e.target.dataset.color;
                 this.currentColor = color;
+                this.updateOpacityTrack();
                 // Save to localStorage
                 localStorage.setItem('webext-draw-color', color);
-                
+
                 // Update fill color if fill is enabled
                 if (this.fillEnabled) {
                     this.fillColor = color;
@@ -635,10 +681,25 @@ class WebDrawingExtension {
             sizeValue.textContent = e.target.value;
         });
 
+        const opacitySlider = document.getElementById('webext-stroke-opacity');
+        const opacityValue = document.getElementById('webext-draw-opacity-value');
+        opacitySlider.addEventListener('input', (e) => {
+            this.strokeOpacity = e.target.value / 100;
+            opacityValue.textContent = e.target.value + '%';
+            // Update the opacity track gradient
+            this.updateOpacityTrack();
+        });
+
         // Shape buttons in popup
         const shapeButtons = document.querySelectorAll('.webext-draw-shape-btn');
         shapeButtons.forEach(btn => {
             btn.addEventListener('click', (e) => {
+                // Finish any in-progress free polygon
+                if (this.freePolygonPoints.length >= 3) {
+                    this.finishFreePolygon();
+                } else {
+                    this.freePolygonPoints = [];
+                }
                 const shape = e.currentTarget.dataset.shape;
                 this.drawingMode = shape;
                 this.updateCursor();
@@ -729,6 +790,11 @@ class WebDrawingExtension {
         });
         this.canvas.addEventListener('mouseup', () => this.stopDrawing());
         this.canvas.addEventListener('mouseout', () => this.stopDrawing());
+        this.canvas.addEventListener('dblclick', (e) => {
+            if (this.drawingMode === 'freepolygon' && this.freePolygonPoints.length >= 3) {
+                this.finishFreePolygon();
+            }
+        });
 
         // Block space key scrolling globally when extension is enabled
         window.addEventListener('keydown', (e) => {
@@ -746,6 +812,12 @@ class WebDrawingExtension {
                 return;
             }
             if (e.key === 'Escape') {
+                // Cancel free polygon if in progress
+                if (this.freePolygonPoints.length > 0) {
+                    this.freePolygonPoints = [];
+                    this.redrawAllShapes();
+                    return;
+                }
                 this.disableDrawing();
                 this.closeAllPopups();
             } else if (e.code === 'Space' && !this.isSpacePressed && this.isEnabled) {
@@ -811,9 +883,10 @@ class WebDrawingExtension {
         const updateColorFromPicker = () => {
             const color = hsbToHex(this.colorPickerHue, this.colorPickerSaturation, this.colorPickerBrightness);
             this.currentColor = color;
+            this.updateOpacityTrack();
             // Save to localStorage
             localStorage.setItem('webext-draw-color', color);
-            
+
             // Update fill color if fill is enabled
             if (this.fillEnabled) {
                 this.fillColor = color;
@@ -1013,12 +1086,22 @@ class WebDrawingExtension {
         } else if (this.drawingMode === 'pen') {
             // Start new path
             this.currentPath = [{ x: e.clientX, y: e.clientY }];
+        } else if (this.drawingMode === 'freepolygon') {
+            // Add point on click
+            this.freePolygonPoints.push({ x: e.clientX, y: e.clientY });
+            this.isDrawing = false; // Don't track as dragging
+            this.drawFreePolygonPreview(e.clientX, e.clientY);
         } else if (this.drawingMode !== 'pen' && this.drawingMode !== 'eraser') {
             this.svgOverlay.style.pointerEvents = 'auto';
         }
     }
 
     draw(e) {
+        // Free polygon preview follows mouse even when not dragging
+        if (this.drawingMode === 'freepolygon' && this.freePolygonPoints.length > 0 && this.isEnabled) {
+            this.drawFreePolygonPreview(e.clientX, e.clientY);
+            return;
+        }
         if (!this.isDrawing || !this.isEnabled) return;
 
         if (this.drawingMode === 'pen') {
@@ -1027,9 +1110,11 @@ class WebDrawingExtension {
             this.ctx.lineTo(e.clientX, e.clientY);
             this.ctx.strokeStyle = this.currentColor;
             this.ctx.lineWidth = this.lineWidth;
+            this.ctx.globalAlpha = this.strokeOpacity;
             this.ctx.lineCap = 'round';
             this.ctx.lineJoin = 'round';
             this.ctx.stroke();
+            this.ctx.globalAlpha = 1;
 
             // Add point to current path
             this.currentPath.push({ x: e.clientX, y: e.clientY });
@@ -1102,6 +1187,16 @@ class WebDrawingExtension {
                 } else if (this.selectedShape.type === 'cross') {
                     this.selectedShape.cx = this.originalShape.cx + deltaX;
                     this.selectedShape.cy = this.originalShape.cy + deltaY;
+                } else if (this.selectedShape.type === 'curve' || this.selectedShape.type === 'bezier') {
+                    // Offset all numbers in the d attribute
+                    const origD = this.originalShape.d;
+                    let i = 0;
+                    this.selectedShape.d = origD.replace(/-?[\d.]+/g, (match) => {
+                        const val = parseFloat(match);
+                        const offset = (i % 2 === 0) ? deltaX : deltaY;
+                        i++;
+                        return (val + offset).toFixed(1);
+                    });
                 }
 
                 this.redrawAllShapes();
@@ -1126,6 +1221,63 @@ class WebDrawingExtension {
         } else {
             this.drawShape(e.clientX, e.clientY);
         }
+    }
+
+    drawFreePolygonPreview(mouseX, mouseY) {
+        // Draw on canvas directly
+        this.redrawAllShapes();
+        if (this.freePolygonPoints.length === 0) return;
+
+        this.ctx.strokeStyle = this.currentColor;
+        this.ctx.lineWidth = this.lineWidth;
+        this.ctx.globalAlpha = this.strokeOpacity;
+        this.ctx.lineCap = 'round';
+        this.ctx.lineJoin = 'round';
+
+        // Draw existing segments
+        this.ctx.beginPath();
+        this.ctx.moveTo(this.freePolygonPoints[0].x, this.freePolygonPoints[0].y);
+        for (let i = 1; i < this.freePolygonPoints.length; i++) {
+            this.ctx.lineTo(this.freePolygonPoints[i].x, this.freePolygonPoints[i].y);
+        }
+        // Line to current mouse position
+        this.ctx.lineTo(mouseX, mouseY);
+        // Dashed line back to first point
+        this.ctx.stroke();
+
+        this.ctx.setLineDash([5, 5]);
+        this.ctx.beginPath();
+        this.ctx.moveTo(mouseX, mouseY);
+        this.ctx.lineTo(this.freePolygonPoints[0].x, this.freePolygonPoints[0].y);
+        this.ctx.stroke();
+        this.ctx.setLineDash([]);
+
+        // Draw dots on each point
+        this.freePolygonPoints.forEach(p => {
+            this.ctx.beginPath();
+            this.ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+            this.ctx.fillStyle = this.currentColor;
+            this.ctx.fill();
+        });
+
+        this.ctx.globalAlpha = 1;
+    }
+
+    finishFreePolygon() {
+        if (this.freePolygonPoints.length < 3) return;
+
+        const pointsStr = this.freePolygonPoints.map(p => `${p.x},${p.y}`).join(' ');
+        this.shapes.push({
+            type: 'polygon',
+            points: pointsStr,
+            color: this.currentColor,
+            strokeWidth: this.lineWidth,
+            opacity: this.strokeOpacity,
+            fillColor: this.fillEnabled ? this.fillColor : 'none',
+            fillEnabled: this.fillEnabled
+        });
+        this.freePolygonPoints = [];
+        this.redrawAllShapes();
     }
 
     drawShape(currentX, currentY) {
@@ -1360,9 +1512,43 @@ class WebDrawingExtension {
                 hLine.setAttribute('stroke-linecap', 'round');
                 shape.appendChild(hLine);
                 break;
+
+            case 'curve':
+                shape = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                // Quadratic curve: control point is perpendicular offset from midpoint
+                const cvMidX = (this.shapeStartX + currentX) / 2;
+                const cvMidY = (this.shapeStartY + currentY) / 2;
+                const cvDx = currentX - this.shapeStartX;
+                const cvDy = currentY - this.shapeStartY;
+                // Control point offset perpendicular to the line
+                const cvCpX = cvMidX - cvDy * 0.5;
+                const cvCpY = cvMidY + cvDx * 0.5;
+                shape.setAttribute('d', `M${this.shapeStartX},${this.shapeStartY} Q${cvCpX},${cvCpY} ${currentX},${currentY}`);
+                shape.setAttribute('fill', 'none');
+                shape.setAttribute('stroke', strokeColor);
+                shape.setAttribute('stroke-width', strokeWidth);
+                shape.setAttribute('stroke-linecap', 'round');
+                break;
+
+            case 'bezier':
+                shape = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                // Cubic bezier: two control points
+                const bzDx = currentX - this.shapeStartX;
+                const bzDy = currentY - this.shapeStartY;
+                const bzCp1X = this.shapeStartX + bzDx * 0.33;
+                const bzCp1Y = this.shapeStartY - Math.abs(bzDy) * 0.6;
+                const bzCp2X = this.shapeStartX + bzDx * 0.66;
+                const bzCp2Y = currentY - Math.abs(bzDy) * 0.6;
+                shape.setAttribute('d', `M${this.shapeStartX},${this.shapeStartY} C${bzCp1X},${bzCp1Y} ${bzCp2X},${bzCp2Y} ${currentX},${currentY}`);
+                shape.setAttribute('fill', 'none');
+                shape.setAttribute('stroke', strokeColor);
+                shape.setAttribute('stroke-width', strokeWidth);
+                shape.setAttribute('stroke-linecap', 'round');
+                break;
         }
 
         if (shape) {
+            shape.setAttribute('opacity', this.strokeOpacity);
             this.svgOverlay.appendChild(shape);
         }
     }
@@ -1375,10 +1561,11 @@ class WebDrawingExtension {
                     type: 'path',
                     points: [...this.currentPath],
                     color: this.currentColor,
-                    strokeWidth: this.lineWidth
+                    strokeWidth: this.lineWidth,
+                    opacity: this.strokeOpacity
                 });
                 this.currentPath = [];
-            } else if (this.drawingMode !== 'pen' && this.drawingMode !== 'eraser' && this.drawingMode !== 'move' && this.drawingMode !== 'picker') {
+            } else if (this.drawingMode !== 'pen' && this.drawingMode !== 'eraser' && this.drawingMode !== 'move' && this.drawingMode !== 'picker' && this.drawingMode !== 'freepolygon') {
                 // Save shape to array
                 const shape = this.createShapeFromSVG();
                 if (shape) {
@@ -1564,16 +1751,17 @@ class WebDrawingExtension {
 
                 // Set as current color
                 this.currentColor = hexColor;
+                this.updateOpacityTrack();
                 // Save to localStorage
                 localStorage.setItem('webext-draw-color', hexColor);
-                
+
                 // Update fill color if fill is enabled
                 if (this.fillEnabled) {
                     this.fillColor = hexColor;
                     localStorage.setItem('webext-draw-fill-color', hexColor);
                 }
             } else {
-                this.showColorNotification('Trình duyệt không hỗ trợ EyeDropper API');
+                this.showColorNotification('Browser does not support EyeDropper API');
             }
         } catch (error) {
             // User cancelled or error
@@ -1605,7 +1793,7 @@ class WebDrawingExtension {
             box-shadow: 0 4px 12px rgba(0,0,0,0.3);
             transition: opacity 0.3s ease;
         `;
-        notification.textContent = `Màu sắc ${color} đã được copy!`;
+        notification.textContent = `Color ${color} copied!`;
 
         document.body.appendChild(notification);
 
@@ -1636,7 +1824,8 @@ class WebDrawingExtension {
             color: this.currentColor,
             fontSize: fontSize,
             fontFamily: fontFamily,
-            fontWeight: fontWeight
+            fontWeight: fontWeight,
+            opacity: this.strokeOpacity
         });
     }
 
@@ -1707,7 +1896,8 @@ class WebDrawingExtension {
                     color: this.currentColor,
                     fontSize: fontSize,
                     fontFamily: fontFamily,
-                    fontWeight: fontWeight
+                    fontWeight: fontWeight,
+                    opacity: this.strokeOpacity
                 });
             }
             inputElement.remove();
@@ -1740,6 +1930,7 @@ class WebDrawingExtension {
             type: shape.tagName,
             color: this.currentColor,
             strokeWidth: this.lineWidth,
+            opacity: this.strokeOpacity,
             fillColor: this.fillEnabled ? this.fillColor : 'none',
             fillEnabled: this.fillEnabled
         };
@@ -1793,6 +1984,14 @@ class WebDrawingExtension {
             shapeData.cy = parseFloat(shape.getAttribute('cy'));
             shapeData.rx = parseFloat(shape.getAttribute('rx'));
             shapeData.ry = parseFloat(shape.getAttribute('ry'));
+        } else if (shape.tagName === 'path') {
+            const d = shape.getAttribute('d');
+            shapeData.d = d;
+            if (d.includes('Q')) {
+                shapeData.type = 'curve';
+            } else if (d.includes('C')) {
+                shapeData.type = 'bezier';
+            }
         }
 
         return shapeData;
@@ -1871,6 +2070,13 @@ class WebDrawingExtension {
                 const halfH = shape.height / 2;
                 if (x >= shape.cx - halfW && x <= shape.cx + halfW &&
                     y >= shape.cy - halfH && y <= shape.cy + halfH) {
+                    return shape;
+                }
+            } else if (shape.type === 'curve' || shape.type === 'bezier') {
+                // Use bounding box from d attribute
+                const bounds = this.getShapeBounds(shape);
+                if (x >= bounds.x - 10 && x <= bounds.x + bounds.width + 10 &&
+                    y >= bounds.y - 10 && y <= bounds.y + bounds.height + 10) {
                     return shape;
                 }
             }
@@ -2125,6 +2331,17 @@ class WebDrawingExtension {
             const minX = Math.min(...xs);
             const minY = Math.min(...ys);
             bounds = { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
+        } else if (shape.type === 'curve' || shape.type === 'bezier') {
+            // Extract all numbers from the d attribute for rough bounds
+            const nums = shape.d.match(/-?[\d.]+/g).map(Number);
+            const xs = [], ys = [];
+            for (let i = 0; i < nums.length; i += 2) {
+                xs.push(nums[i]);
+                if (i + 1 < nums.length) ys.push(nums[i + 1]);
+            }
+            const minX = Math.min(...xs);
+            const minY = Math.min(...ys);
+            bounds = { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
         }
 
         return bounds;
@@ -2239,6 +2456,15 @@ class WebDrawingExtension {
     }
 
 
+    updateOpacityTrack() {
+        const track = document.querySelector('.webext-draw-opacity-track');
+        if (track) {
+            const color = this.currentColor;
+            // Gradient from light gray to current color, matching reference design
+            track.style.background = `linear-gradient(to right, #e8e8e8, ${color})`;
+        }
+    }
+
     deleteSelectedShapes() {
         const toDelete = this.selectedShapes.length > 0 ? this.selectedShapes : (this.selectedShape ? [this.selectedShape] : []);
         if (toDelete.length === 0) return;
@@ -2255,6 +2481,7 @@ class WebDrawingExtension {
 
         // Redraw all shapes
         this.shapes.forEach(shape => {
+            this.ctx.globalAlpha = shape.opacity != null ? shape.opacity : 1;
             this.ctx.strokeStyle = shape.color;
             this.ctx.lineWidth = shape.strokeWidth;
             this.ctx.lineCap = 'round';
@@ -2340,15 +2567,16 @@ class WebDrawingExtension {
                 this.ctx.stroke();
             } else if (shape.type === 'highlight') {
                 // Draw highlight (filled rectangle with opacity)
+                const shapeAlpha = shape.opacity != null ? shape.opacity : 1;
                 this.ctx.fillStyle = shape.color;
-                this.ctx.globalAlpha = shape.fillOpacity || 0.3;
+                this.ctx.globalAlpha = (shape.fillOpacity || 0.3) * shapeAlpha;
                 this.ctx.fillRect(shape.x, shape.y, shape.width, shape.height);
-                this.ctx.globalAlpha = 1;
             } else if (shape.type === 'rotatedHighlight') {
                 // Draw rotated highlight (filled polygon with opacity)
+                const shapeAlpha2 = shape.opacity != null ? shape.opacity : 1;
                 const points = shape.points.split(' ');
                 this.ctx.fillStyle = shape.color;
-                this.ctx.globalAlpha = shape.fillOpacity || 0.3;
+                this.ctx.globalAlpha = (shape.fillOpacity || 0.3) * shapeAlpha2;
                 this.ctx.beginPath();
                 points.forEach((point, index) => {
                     const [x, y] = point.split(',').map(parseFloat);
@@ -2360,7 +2588,6 @@ class WebDrawingExtension {
                 });
                 this.ctx.closePath();
                 this.ctx.fill();
-                this.ctx.globalAlpha = 1;
             } else if (shape.type === 'ellipse') {
                 this.ctx.beginPath();
                 this.ctx.ellipse(shape.cx, shape.cy, shape.rx, shape.ry, 0, 0, 2 * Math.PI);
@@ -2380,7 +2607,12 @@ class WebDrawingExtension {
                 this.ctx.moveTo(shape.cx - halfW, shape.cy);
                 this.ctx.lineTo(shape.cx + halfW, shape.cy);
                 this.ctx.stroke();
+            } else if (shape.type === 'curve' || shape.type === 'bezier') {
+                // Parse SVG path d attribute and draw on canvas
+                const p = new Path2D(shape.d);
+                this.ctx.stroke(p);
             }
+            this.ctx.globalAlpha = 1;
         });
 
         // Draw selection indicators
@@ -2687,7 +2919,7 @@ class WebDrawingExtension {
             z-index: 10000003;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         `;
-        instruction.textContent = 'Kéo để chọn vùng chụp màn hình. Nhấn ESC để hủy.';
+        instruction.textContent = 'Drag to select capture area. Press ESC to cancel.';
 
         document.body.appendChild(overlay);
         document.body.appendChild(selectionBox);
@@ -2825,11 +3057,11 @@ class WebDrawingExtension {
                 img.src = response.dataUrl;
             } else {
                 console.error('Failed to capture screenshot:', response?.error);
-                alert('Không thể chụp màn hình. Vui lòng thử lại.');
+                alert('Screenshot failed. Please try again.');
             }
         } catch (error) {
             console.error('Screenshot error:', error);
-            alert('Không thể chụp màn hình. Vui lòng thử lại.');
+            alert('Screenshot failed. Please try again.');
         }
     }
 
@@ -2865,11 +3097,11 @@ class WebDrawingExtension {
                 document.body.removeChild(a);
             } else {
                 console.error('Failed to capture screenshot:', response?.error);
-                alert('Không thể chụp màn hình. Vui lòng thử lại.');
+                alert('Screenshot failed. Please try again.');
             }
         } catch (error) {
             console.error('Screenshot error:', error);
-            alert('Không thể chụp màn hình. Vui lòng thử lại.');
+            alert('Screenshot failed. Please try again.');
         }
 
         // Restore toolbar and canvas

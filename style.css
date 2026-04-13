@@ -409,8 +409,12 @@
 
 .webext-draw-shapes-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, 32px);
     gap: 6px;
+}
+
+#webext-size-popup {
+    min-width: 170px !important;
 }
 
 .webext-draw-shape-btn {
@@ -610,61 +614,111 @@
     font-weight: bold;
 }
 
+/* Slider groups */
+.webext-draw-slider-group {
+    margin-bottom: 8px !important;
+}
+
+.webext-draw-slider-group:last-child {
+    margin-bottom: 0 !important;
+}
+
+.webext-draw-slider-track {
+    position: relative !important;
+    height: 16px !important;
+    border-radius: 8px !important;
+    overflow: visible !important;
+}
+
+.webext-draw-opacity-track {
+    border: 1px solid #e0e0e0 !important;
+    background: linear-gradient(to right, #e0e0e0, #333) !important;
+}
+
+.webext-draw-size-track {
+    background: #e0e0e0 !important;
+    border: 1px solid #d0d0d0 !important;
+}
+
+.webext-draw-slider-track input[type="range"] {
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    appearance: none !important;
+    width: 100% !important;
+    height: 16px !important;
+    background: transparent !important;
+    outline: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    cursor: pointer !important;
+    display: block !important;
+}
+
+.webext-draw-slider-track input[type="range"]::-webkit-slider-runnable-track {
+    height: 16px !important;
+    background: transparent !important;
+    border-radius: 8px !important;
+}
+
+.webext-draw-slider-track input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    width: 20px !important;
+    height: 20px !important;
+    border-radius: 50% !important;
+    background: #333 !important;
+    cursor: pointer !important;
+    border: 2.5px solid #fff !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3) !important;
+    transition: transform 0.15s ease !important;
+    margin-top: -2px !important;
+}
+
+.webext-draw-size-track input[type="range"]::-webkit-slider-thumb {
+    background: #6c5ce7 !important;
+}
+
+.webext-draw-slider-track input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.1) !important;
+}
+
+.webext-draw-slider-track input[type="range"]::-moz-range-track {
+    height: 16px !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 8px !important;
+}
+
+.webext-draw-slider-track input[type="range"]::-moz-range-thumb {
+    width: 20px !important;
+    height: 20px !important;
+    border-radius: 50% !important;
+    background: #333 !important;
+    cursor: pointer !important;
+    border: 2.5px solid #fff !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3) !important;
+}
+
+.webext-draw-size-track input[type="range"]::-moz-range-thumb {
+    background: #6c5ce7 !important;
+}
+
+.webext-draw-slider-label {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    margin-top: 4px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    color: #555 !important;
+    padding: 0 2px !important;
+}
+
+/* Legacy - keep for compat */
 .webext-draw-size-controls {
     display: flex;
     align-items: center;
     gap: 10px;
-}
-
-.webext-draw-size-controls input[type="range"] {
-    flex: 1;
-    height: 6px;
-    border-radius: 3px;
-    background: #e0e0e0;
-    outline: none;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
-}
-
-.webext-draw-size-controls input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: #007bff;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border: 2px solid rgba(255, 255, 255, 0.4);
-}
-
-.webext-draw-size-controls input[type="range"]::-webkit-slider-thumb:hover {
-    background: #0056b3;
-    transform: scale(1.1);
-}
-
-.webext-draw-size-controls input[type="range"]::-moz-range-thumb {
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: #007bff;
-    cursor: pointer;
-    border: 2px solid rgba(255, 255, 255, 0.4);
-    transition: all 0.2s ease;
-}
-
-.webext-draw-size-controls input[type="range"]::-moz-range-thumb:hover {
-    background: #0056b3;
-    transform: scale(1.1);
-}
-
-#webext-draw-size-value {
-    font-weight: 600;
-    color: #333;
-    min-width: 20px;
-    text-align: center;
-    font-size: 12px;
 }
 
 #webext-draw-canvas {

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Web Drawing Extension",
-  "version": "1.0",
-  "description": "Vẽ và highlight trên trang web",
+  "name": "DrawLite - Draw & Annotate on Web",
+  "version": "1.0.0",
+  "description": "Draw, highlight, annotate and screenshot any webpage. Freehand pen, shapes, text, color picker and more.",
   "background": {
     "service_worker": "background.js"
   },
