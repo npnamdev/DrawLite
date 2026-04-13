@@ -23,6 +23,7 @@ class WebDrawingExtension {
         this.isToolbarVisible = false;
         this.pinState = localStorage.getItem('webext-draw-pinned') || 'none'; // 'none', 'right'
         this.drawingsVisible = true;
+        this.stepCounter = 1;
         this.shapes = []; // Store all shapes for movement
         this.selectedShape = null; // Currently selected shape for moving
         this.selectedShapes = []; // Multiple selected shapes
@@ -193,10 +194,6 @@ class WebDrawingExtension {
         if (existingColorPopup) {
             existingColorPopup.remove();
         }
-        const existingSizePopup = document.getElementById('webext-size-popup');
-        if (existingSizePopup) {
-            existingSizePopup.remove();
-        }
     }
 
     createSVGOverlay() {
@@ -333,12 +330,6 @@ class WebDrawingExtension {
                             <path d="m8.5 4.5 2.148-2.148a1.205 1.205 0 0 1 1.704 0l7.296 7.296a1.205 1.205 0 0 1 0 1.704l-7.592 7.592a3.615 3.615 0 0 1-5.112 0l-3.888-3.888a3.615 3.615 0 0 1 0-5.112L5.67 7.33"/>
                         </svg>
                     </button>
-                    <button class="webext-draw-tool-btn" data-tool="size" title="Kích thước">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10"/>
-                            <circle cx="12" cy="12" r="1"/>
-                        </svg>
-                    </button>
                     <button class="webext-draw-tool-btn" data-tool="picker" title="Lấy màu">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="m12 9-8.414 8.414A2 2 0 0 0 3 18.828v1.344a2 2 0 0 1-.586 1.414A2 2 0 0 1 3.828 21h1.344a2 2 0 0 0 1.414-.586L15 12"/>
@@ -374,6 +365,32 @@ class WebDrawingExtension {
                             <line x1="10" y1="4" x2="10" y2="10"/>
                             <line x1="14" y1="4" x2="14" y2="8"/>
                             <line x1="18" y1="4" x2="18" y2="10"/>
+                        </svg>
+                    </button>
+                    <button class="webext-draw-tool-btn" data-tool="stepmarker" title="Đánh số bước">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <text x="12" y="16" text-anchor="middle" fill="currentColor" stroke="none" font-size="12" font-weight="bold">1</text>
+                        </svg>
+                    </button>
+                    <button class="webext-draw-tool-btn" data-tool="blur" title="Làm mờ vùng">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/>
+                            <line x1="8" y1="8" x2="8" y2="8.01"/>
+                            <line x1="12" y1="8" x2="12" y2="8.01"/>
+                            <line x1="16" y1="8" x2="16" y2="8.01"/>
+                            <line x1="8" y1="12" x2="8" y2="12.01"/>
+                            <line x1="12" y1="12" x2="12" y2="12.01"/>
+                            <line x1="16" y1="12" x2="16" y2="12.01"/>
+                            <line x1="8" y1="16" x2="8" y2="16.01"/>
+                            <line x1="12" y1="16" x2="12" y2="16.01"/>
+                            <line x1="16" y1="16" x2="16" y2="16.01"/>
+                        </svg>
+                    </button>
+                    <button class="webext-draw-tool-btn" data-tool="spotlight" title="Spotlight">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="1" y="1" width="22" height="22" rx="2" fill="currentColor" opacity="0.15"/>
+                            <circle cx="12" cy="12" r="5" fill="white" stroke="currentColor"/>
                         </svg>
                     </button>
                 </div>
@@ -456,34 +473,24 @@ class WebDrawingExtension {
                     <span>Tô màu nền</span>
                 </label>
             </div>
+            <div class="webext-draw-sliders-row">
+                <div class="webext-draw-slider-inline">
+                    <span class="webext-draw-slider-inline-label">Độ mờ</span>
+                    <div class="webext-draw-slider-track webext-draw-opacity-track">
+                        <input type="range" id="webext-stroke-opacity" min="1" max="100" value="100">
+                    </div>
+                    <span class="webext-draw-slider-inline-value" id="webext-draw-opacity-value">100%</span>
+                </div>
+                <div class="webext-draw-slider-inline">
+                    <span class="webext-draw-slider-inline-label">Nét</span>
+                    <div class="webext-draw-slider-track webext-draw-size-track">
+                        <input type="range" id="webext-line-width" min="1" max="50" value="4">
+                    </div>
+                    <span class="webext-draw-slider-inline-value" id="webext-draw-size-value">4</span>
+                </div>
+            </div>
         `;
         document.body.appendChild(colorPopup);
-
-        const sizePopup = document.createElement('div');
-        sizePopup.id = 'webext-size-popup';
-        sizePopup.className = 'webext-draw-popup';
-        sizePopup.style.display = 'none';
-        sizePopup.innerHTML = `
-            <div class="webext-draw-slider-group">
-                <div class="webext-draw-slider-track webext-draw-opacity-track">
-                    <input type="range" id="webext-stroke-opacity" min="1" max="100" value="100">
-                </div>
-                <div class="webext-draw-slider-label">
-                    <span>Transp.</span>
-                    <span id="webext-draw-opacity-value">100%</span>
-                </div>
-            </div>
-            <div class="webext-draw-slider-group">
-                <div class="webext-draw-slider-track webext-draw-size-track">
-                    <input type="range" id="webext-line-width" min="1" max="50" value="4">
-                </div>
-                <div class="webext-draw-slider-label">
-                    <span>Size</span>
-                    <span id="webext-draw-size-value">4</span>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(sizePopup);
 
         const shapesPopup = document.createElement('div');
         shapesPopup.id = 'webext-shapes-popup';
@@ -615,7 +622,6 @@ class WebDrawingExtension {
         const quickColors = document.querySelectorAll('.webext-draw-quick-color');
         const closeBtn = document.querySelector('.webext-draw-close-btn');
         const colorPopup = document.getElementById('webext-color-popup');
-        const sizePopup = document.getElementById('webext-size-popup');
         const dragHandle = document.querySelector('.webext-drag-handle');
 
         // Setup color picker
@@ -639,9 +645,6 @@ class WebDrawingExtension {
                 // Handle special tools
                 if (tool === 'color') {
                     this.togglePopup('color', button);
-                    return;
-                } else if (tool === 'size') {
-                    this.togglePopup('size', button);
                     return;
                 } else if (tool === 'shapes') {
                     this.togglePopup('shapes', button);
@@ -811,11 +814,6 @@ class WebDrawingExtension {
                 !e.target.closest('#webext-color-popup')) {
                 colorPopup.style.display = 'none';
                 document.querySelector('.webext-draw-tool-btn[data-tool="color"]')?.classList.remove('popup-active');
-            }
-            if (!e.target.closest('.webext-draw-tool-btn[data-tool="size"]') &&
-                !e.target.closest('#webext-size-popup')) {
-                sizePopup.style.display = 'none';
-                document.querySelector('.webext-draw-tool-btn[data-tool="size"]')?.classList.remove('popup-active');
             }
             const shapesPopupEl = document.getElementById('webext-shapes-popup');
             if (!e.target.closest('.webext-draw-tool-btn[data-tool="shapes"]') &&
@@ -1223,6 +1221,20 @@ class WebDrawingExtension {
             this.drawFreePolygonPreview(e.clientX, e.clientY);
         } else if (this.drawingMode === 'ruler') {
             this.rulerStart = { x: e.clientX, y: e.clientY };
+        } else if (this.drawingMode === 'stepmarker') {
+            this.saveState();
+            this.shapes.push({
+                type: 'stepmarker',
+                x: e.clientX,
+                y: e.clientY,
+                number: this.stepCounter++,
+                color: this.currentColor,
+                opacity: this.strokeOpacity
+            });
+            this.redrawAllShapes();
+            this.isDrawing = false;
+        } else if (this.drawingMode === 'blur' || this.drawingMode === 'spotlight') {
+            // These use drag — handled like shapes via shapeStartX/Y
         } else if (this.drawingMode !== 'pen' && this.drawingMode !== 'eraser') {
             this.svgOverlay.style.pointerEvents = 'auto';
         }
@@ -1311,7 +1323,10 @@ class WebDrawingExtension {
                         return `${x + deltaX},${y + deltaY}`;
                     });
                     this.selectedShape.points = newPoints.join(' ');
-                } else if (this.selectedShape.type === 'highlight') {
+                } else if (this.selectedShape.type === 'highlight' || this.selectedShape.type === 'blur' || this.selectedShape.type === 'spotlight') {
+                    this.selectedShape.x = this.originalShape.x + deltaX;
+                    this.selectedShape.y = this.originalShape.y + deltaY;
+                } else if (this.selectedShape.type === 'stepmarker') {
                     this.selectedShape.x = this.originalShape.x + deltaX;
                     this.selectedShape.y = this.originalShape.y + deltaY;
                 } else if (this.selectedShape.type === 'ellipse') {
@@ -1384,6 +1399,39 @@ class WebDrawingExtension {
             this.ctx.fillRect(midX - tw / 2 - 4, midY - 18, tw + 8, 20);
             this.ctx.fillStyle = 'white';
             this.ctx.fillText(label, midX - tw / 2, midY - 3);
+        } else if (this.drawingMode === 'blur' && this.isDrawing) {
+            this.redrawAllShapes();
+            const bx = Math.min(this.shapeStartX, e.clientX);
+            const by = Math.min(this.shapeStartY, e.clientY);
+            const bw = Math.abs(e.clientX - this.shapeStartX);
+            const bh = Math.abs(e.clientY - this.shapeStartY);
+            // Blur preview
+            this.lastX = e.clientX;
+            this.lastY = e.clientY;
+            this.ctx.fillStyle = 'rgba(200,200,200,0.5)';
+            this.ctx.fillRect(bx, by, bw, bh);
+            this.ctx.strokeStyle = '#999';
+            this.ctx.lineWidth = 1;
+            this.ctx.setLineDash([4, 4]);
+            this.ctx.strokeRect(bx, by, bw, bh);
+            this.ctx.setLineDash([]);
+        } else if (this.drawingMode === 'spotlight' && this.isDrawing) {
+            this.redrawAllShapes();
+            const sx = Math.min(this.shapeStartX, e.clientX);
+            const sy = Math.min(this.shapeStartY, e.clientY);
+            const sw = Math.abs(e.clientX - this.shapeStartX);
+            const sh = Math.abs(e.clientY - this.shapeStartY);
+            const cw = this.canvas.width / (window.devicePixelRatio || 1);
+            const ch = this.canvas.height / (window.devicePixelRatio || 1);
+            this.lastX = e.clientX;
+            this.lastY = e.clientY;
+            // Dark overlay with cutout
+            this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            this.ctx.fillRect(0, 0, cw, ch);
+            this.ctx.clearRect(sx, sy, sw, sh);
+            this.ctx.strokeStyle = '#fff';
+            this.ctx.lineWidth = 2;
+            this.ctx.strokeRect(sx, sy, sw, sh);
         } else {
             this.drawShape(e.clientX, e.clientY);
         }
@@ -1778,10 +1826,29 @@ class WebDrawingExtension {
                 });
                 this.currentPath = [];
             } else if (this.drawingMode === 'ruler') {
-                // Ruler is temporary - just clear it
                 this.rulerStart = null;
                 this.redrawAllShapes();
-            } else if (this.drawingMode !== 'pen' && this.drawingMode !== 'eraser' && this.drawingMode !== 'move' && this.drawingMode !== 'picker' && this.drawingMode !== 'freepolygon') {
+            } else if (this.drawingMode === 'blur') {
+                const bx = Math.min(this.shapeStartX, this.lastX);
+                const by = Math.min(this.shapeStartY, this.lastY);
+                const bw = Math.abs(this.lastX - this.shapeStartX);
+                const bh = Math.abs(this.lastY - this.shapeStartY);
+                if (bw > 5 && bh > 5) {
+                    this.saveState();
+                    this.shapes.push({ type: 'blur', x: bx, y: by, width: bw, height: bh, color: this.currentColor, opacity: this.strokeOpacity });
+                    this.redrawAllShapes();
+                }
+            } else if (this.drawingMode === 'spotlight') {
+                const sx = Math.min(this.shapeStartX, this.lastX);
+                const sy = Math.min(this.shapeStartY, this.lastY);
+                const sw = Math.abs(this.lastX - this.shapeStartX);
+                const sh = Math.abs(this.lastY - this.shapeStartY);
+                if (sw > 5 && sh > 5) {
+                    this.saveState();
+                    this.shapes.push({ type: 'spotlight', x: sx, y: sy, width: sw, height: sh, opacity: 1 });
+                    this.redrawAllShapes();
+                }
+            } else if (this.drawingMode !== 'pen' && this.drawingMode !== 'eraser' && this.drawingMode !== 'move' && this.drawingMode !== 'picker' && this.drawingMode !== 'freepolygon' && this.drawingMode !== 'stepmarker') {
                 const shape = this.createShapeFromSVG();
                 if (shape) {
                     this.saveState();
@@ -2277,10 +2344,18 @@ class WebDrawingExtension {
                     return shape;
                 }
             } else if (shape.type === 'curve' || shape.type === 'bezier') {
-                // Use bounding box from d attribute
                 const bounds = this.getShapeBounds(shape);
                 if (x >= bounds.x - 10 && x <= bounds.x + bounds.width + 10 &&
                     y >= bounds.y - 10 && y <= bounds.y + bounds.height + 10) {
+                    return shape;
+                }
+            } else if (shape.type === 'stepmarker') {
+                if (Math.sqrt(Math.pow(x - shape.x, 2) + Math.pow(y - shape.y, 2)) <= 18) {
+                    return shape;
+                }
+            } else if (shape.type === 'blur' || shape.type === 'spotlight') {
+                if (x >= shape.x && x <= shape.x + shape.width &&
+                    y >= shape.y && y <= shape.y + shape.height) {
                     return shape;
                 }
             }
@@ -2546,6 +2621,10 @@ class WebDrawingExtension {
             const minX = Math.min(...xs);
             const minY = Math.min(...ys);
             bounds = { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
+        } else if (shape.type === 'stepmarker') {
+            bounds = { x: shape.x - 16, y: shape.y - 16, width: 32, height: 32 };
+        } else if (shape.type === 'blur' || shape.type === 'spotlight') {
+            bounds = { x: shape.x, y: shape.y, width: shape.width, height: shape.height };
         }
 
         return bounds;
@@ -2986,9 +3065,58 @@ class WebDrawingExtension {
                 this.ctx.lineTo(shape.cx + halfW, shape.cy);
                 this.ctx.stroke();
             } else if (shape.type === 'curve' || shape.type === 'bezier') {
-                // Parse SVG path d attribute and draw on canvas
                 const p = new Path2D(shape.d);
                 this.ctx.stroke(p);
+            } else if (shape.type === 'stepmarker') {
+                const r = 16;
+                // Circle
+                this.ctx.beginPath();
+                this.ctx.arc(shape.x, shape.y, r, 0, Math.PI * 2);
+                this.ctx.fillStyle = shape.color;
+                this.ctx.fill();
+                // Number
+                this.ctx.fillStyle = '#fff';
+                this.ctx.font = 'bold 14px sans-serif';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText(String(shape.number), shape.x, shape.y);
+                this.ctx.textAlign = 'start';
+                this.ctx.textBaseline = 'alphabetic';
+            } else if (shape.type === 'blur') {
+                // Create/update real HTML blur overlay div
+                let blurDiv = document.getElementById('webext-blur-' + shape._blurId);
+                if (!blurDiv) {
+                    shape._blurId = shape._blurId || ('b' + Math.random().toString(36).substr(2, 6));
+                    blurDiv = document.createElement('div');
+                    blurDiv.id = 'webext-blur-' + shape._blurId;
+                    blurDiv.className = 'webext-blur-overlay';
+                    document.body.appendChild(blurDiv);
+                }
+                blurDiv.style.cssText = `
+                    position: fixed; left: ${shape.x}px; top: ${shape.y}px;
+                    width: ${shape.width}px; height: ${shape.height}px;
+                    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+                    background: rgba(255,255,255,0.15);
+                    z-index: ${parseInt(getComputedStyle(this.canvas).zIndex) - 1};
+                    pointer-events: none; border-radius: 2px;
+                `;
+            } else if (shape.type === 'spotlight') {
+                // Dark overlay with cutout
+                const cw = this.canvas.width / (window.devicePixelRatio || 1);
+                const ch = this.canvas.height / (window.devicePixelRatio || 1);
+                this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                // Top
+                this.ctx.fillRect(0, 0, cw, shape.y);
+                // Bottom
+                this.ctx.fillRect(0, shape.y + shape.height, cw, ch - shape.y - shape.height);
+                // Left
+                this.ctx.fillRect(0, shape.y, shape.x, shape.height);
+                // Right
+                this.ctx.fillRect(shape.x + shape.width, shape.y, cw - shape.x - shape.width, shape.height);
+                // Border
+                this.ctx.strokeStyle = '#fff';
+                this.ctx.lineWidth = 2;
+                this.ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
             }
             this.ctx.globalAlpha = 1;
         });
@@ -3014,13 +3142,11 @@ class WebDrawingExtension {
 
     togglePopup(type, button) {
         const colorPopup = document.getElementById('webext-color-popup');
-        const sizePopup = document.getElementById('webext-size-popup');
         const shapesPopup = document.getElementById('webext-shapes-popup');
         const screenshotPopup = document.getElementById('webext-screenshot-popup');
 
         // Check if the popup is already open
         const isPopupOpen = (type === 'color' && colorPopup.style.display === 'block') ||
-            (type === 'size' && sizePopup.style.display === 'block') ||
             (type === 'shapes' && shapesPopup.style.display === 'block') ||
             (type === 'screenshot' && screenshotPopup.style.display === 'block');
 
@@ -3080,8 +3206,6 @@ class WebDrawingExtension {
 
         if (type === 'color') {
             positionPopup(colorPopup);
-        } else if (type === 'size') {
-            positionPopup(sizePopup);
         } else if (type === 'shapes') {
             positionPopup(shapesPopup);
         } else if (type === 'screenshot') {
@@ -3166,14 +3290,11 @@ class WebDrawingExtension {
 
     updatePopupPositions() {
         const colorPopup = document.getElementById('webext-color-popup');
-        const sizePopup = document.getElementById('webext-size-popup');
         const shapesPopup = document.getElementById('webext-shapes-popup');
         const screenshotPopup = document.getElementById('webext-screenshot-popup');
         const colorBtn = document.querySelector('.webext-draw-tool-btn[data-tool="color"]');
-        const sizeBtn = document.querySelector('.webext-draw-tool-btn[data-tool="size"]');
         const shapesBtn = document.querySelector('.webext-draw-tool-btn[data-tool="shapes"]');
         const screenshotBtn = document.querySelector('.webext-draw-tool-btn[data-tool="screenshot"]');
-        const isToolbarLeft = this.uiElement.classList.contains('toolbar-left');
         const isPinned = this.pinState !== 'none';
 
         const updatePopupPosition = (popup, btn) => {
@@ -3214,25 +3335,20 @@ class WebDrawingExtension {
         };
 
         updatePopupPosition(colorPopup, colorBtn);
-        updatePopupPosition(sizePopup, sizeBtn);
         updatePopupPosition(shapesPopup, shapesBtn);
         updatePopupPosition(screenshotPopup, screenshotBtn);
     }
 
     closeAllPopups() {
         const colorPopup = document.getElementById('webext-color-popup');
-        const sizePopup = document.getElementById('webext-size-popup');
         const shapesPopup = document.getElementById('webext-shapes-popup');
         const screenshotPopup = document.getElementById('webext-screenshot-popup');
-        colorPopup.style.display = 'none';
-        sizePopup.style.display = 'none';
-        shapesPopup.style.display = 'none';
-        screenshotPopup.style.display = 'none';
-        // Reset transform to ensure clean state when reopened
-        colorPopup.style.transform = '';
-        sizePopup.style.transform = '';
-        shapesPopup.style.transform = '';
-        screenshotPopup.style.transform = '';
+        if (colorPopup) colorPopup.style.display = 'none';
+        if (shapesPopup) shapesPopup.style.display = 'none';
+        if (screenshotPopup) screenshotPopup.style.display = 'none';
+        if (colorPopup) colorPopup.style.transform = '';
+        if (shapesPopup) shapesPopup.style.transform = '';
+        if (screenshotPopup) screenshotPopup.style.transform = '';
         // Remove active state from all tool buttons
         document.querySelectorAll('.webext-draw-tool-btn').forEach(btn => {
             btn.classList.remove('popup-active');

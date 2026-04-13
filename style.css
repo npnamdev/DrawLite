@@ -460,6 +460,40 @@
     border-top: 1px solid #eee !important;
 }
 
+.webext-draw-sliders-row {
+    margin-top: 8px !important;
+    padding-top: 8px !important;
+    border-top: 1px solid #eee !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+}
+
+.webext-draw-slider-inline {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+}
+
+.webext-draw-slider-inline-label {
+    font-size: 11px !important;
+    color: #666 !important;
+    white-space: nowrap !important;
+    min-width: 28px !important;
+}
+
+.webext-draw-slider-inline .webext-draw-slider-track {
+    flex: 1 !important;
+}
+
+.webext-draw-slider-inline-value {
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    color: #555 !important;
+    min-width: 28px !important;
+    text-align: right !important;
+}
+
 .webext-draw-color-hex-row {
     display: flex;
     align-items: center;
