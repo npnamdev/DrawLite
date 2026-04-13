@@ -12,18 +12,88 @@
 
 #webext-draw-ui {
     position: fixed !important;
-    top: 50%;
-    right: 15px;
-    transform: translateY(-50%);
-    z-index: 1000000 !important;
+    bottom: 20px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    top: auto !important;
+    right: auto !important;
+    z-index: 2147483647 !important;
     cursor: auto !important;
     font-size: 12px !important;
-    transition: right 0.3s ease, opacity 0.3s ease !important;
+    transition: all 0.3s ease !important;
     line-height: normal !important;
 }
 
 #webext-draw-ui.dragging {
     transition: none !important;
+}
+
+/* Pinned right */
+#webext-draw-ui.pinned {
+    top: 0 !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: 0 !important;
+    transform: none !important;
+    height: 100dvh !important;
+}
+
+#webext-draw-ui.pinned .webext-draw-toolbar {
+    height: 100% !important;
+    width: 48px !important;
+    border-radius: 0 !important;
+    flex-direction: column !important;
+    box-shadow: -2px 0 12px rgba(0, 0, 0, 0.15) !important;
+    border-left: 1px solid #d0d0d0 !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    border-right: none !important;
+    padding-top: 16px !important;
+    padding-bottom: 16px !important;
+}
+
+#webext-draw-ui.pinned .webext-draw-toolbar-content {
+    flex: 1 !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+}
+
+#webext-draw-ui.pinned .webext-drag-handle {
+    display: none !important;
+}
+
+/* Pinned left */
+#webext-draw-ui.pinned-left {
+    top: 0 !important;
+    bottom: auto !important;
+    left: 0 !important;
+    right: auto !important;
+    transform: none !important;
+    height: 100dvh !important;
+}
+
+#webext-draw-ui.pinned-left .webext-draw-toolbar {
+    height: 100% !important;
+    width: 48px !important;
+    border-radius: 0 !important;
+    flex-direction: column !important;
+    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15) !important;
+    border-right: 1px solid #d0d0d0 !important;
+    border-left: none !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    padding-top: 16px !important;
+    padding-bottom: 16px !important;
+}
+
+#webext-draw-ui.pinned-left .webext-draw-toolbar-content {
+    flex: 1 !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+}
+
+#webext-draw-ui.pinned-left .webext-drag-handle {
+    display: none !important;
 }
 
 /* Toggle button styles - blue gradient background */
@@ -74,43 +144,45 @@
     height: 16px !important;
 }
 
-/* Custom tooltips - toolbar on right, so tooltips show on left */
+/* Custom tooltips - show above for horizontal toolbar */
 .webext-draw-tool-btn[title]:hover::after,
 .webext-draw-close-btn[title]:hover::after {
     content: attr(title);
     position: absolute;
-    right: 45px;
-    top: 50%;
-    transform: translateY(-50%);
+    bottom: 42px;
+    left: 50%;
+    transform: translateX(-50%);
     background: #333;
     color: white;
     padding: 6px 10px;
     border-radius: 6px;
     font-size: 12px;
     white-space: nowrap;
-    z-index: 1000002;
+    z-index: 2147483647;
     pointer-events: none;
-    opacity: 1;
     animation: fadeIn 0.2s ease;
 }
 
-/* Tooltip when toolbar is on the left side */
-.toolbar-left .webext-draw-tool-btn[title]:hover::after,
-.toolbar-left .webext-draw-close-btn[title]:hover::after {
+/* Tooltip when toolbar is pinned (vertical) - show to the left */
+.pinned .webext-draw-tool-btn[title]:hover::after,
+.pinned .webext-draw-close-btn[title]:hover::after {
+    bottom: auto;
+    left: auto;
+    right: 50px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+/* Tooltip when pinned left */
+.pinned-left .webext-draw-tool-btn[title]:hover::after,
+.pinned-left .webext-draw-close-btn[title]:hover::after {
     right: auto;
-    left: 45px;
+    left: 50px;
 }
 
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(-50%) translateX(-5px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(-50%) translateX(0);
-    }
+    from { opacity: 0; transform: translateX(-50%) translateY(3px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
 .webext-draw-toolbar {
@@ -118,10 +190,14 @@
     border-radius: 10px !important;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25) !important;
     padding: 6px !important;
-    width: 48px !important;
+    width: auto !important;
     border: 1px solid #d0d0d0 !important;
     transition: box-shadow 0.2s ease !important;
     margin: 0 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 2px !important;
 }
 
 .webext-draw-toolbar:hover {
@@ -132,12 +208,10 @@
     display: flex !important;
     justify-content: center !important;
     align-items: center !important;
-    height: 20px !important;
     cursor: move !important;
-    margin-top: 5px !important;
-    margin-bottom: 13px !important;
     padding: 4px !important;
     border-radius: 4px !important;
+    margin: 0 6px 0 2px !important;
 }
 
 .webext-drag-dots {
@@ -155,7 +229,8 @@
 
 .webext-draw-toolbar-content {
     display: flex !important;
-    flex-direction: column !important;
+    flex-direction: row !important;
+    align-items: center !important;
     gap: 3px !important;
     padding: 0 !important;
     margin: 0 !important;
@@ -212,14 +287,17 @@
     border-radius: 8px !important;
     color: #666 !important;
     cursor: pointer !important;
-    width: 100% !important;
-    height: 32px !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
     transition: all 0.2s ease !important;
-    margin-top: 4px !important;
+    margin: 0 2px 0 6px !important;
     padding: 0 !important;
+    position: relative !important;
 }
 
 .webext-draw-close-btn:hover {
@@ -236,7 +314,7 @@
     padding: 12px !important;
     min-width: 140px !important;
     border: 1px solid #e0e0e0 !important;
-    z-index: 1000001 !important;
+    z-index: 2147483646 !important;
 }
 
 .webext-draw-popup-header {
@@ -409,7 +487,7 @@
 
 .webext-draw-shapes-grid {
     display: grid;
-    grid-template-columns: repeat(3, 32px);
+    grid-template-columns: repeat(4, 32px);
     gap: 6px;
 }
 
@@ -625,8 +703,8 @@
 
 .webext-draw-slider-track {
     position: relative !important;
-    height: 16px !important;
-    border-radius: 8px !important;
+    height: 10px !important;
+    border-radius: 5px !important;
     overflow: visible !important;
 }
 
@@ -645,7 +723,7 @@
     -moz-appearance: none !important;
     appearance: none !important;
     width: 100% !important;
-    height: 16px !important;
+    height: 10px !important;
     background: transparent !important;
     outline: none !important;
     margin: 0 !important;
@@ -655,22 +733,21 @@
 }
 
 .webext-draw-slider-track input[type="range"]::-webkit-slider-runnable-track {
-    height: 16px !important;
+    height: 10px !important;
     background: transparent !important;
-    border-radius: 8px !important;
+    border-radius: 5px !important;
 }
 
 .webext-draw-slider-track input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none !important;
     appearance: none !important;
-    width: 20px !important;
-    height: 20px !important;
+    width: 14px !important;
+    height: 14px !important;
     border-radius: 50% !important;
     background: #333 !important;
     cursor: pointer !important;
-    border: 2.5px solid #fff !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.3) !important;
-    transition: transform 0.15s ease !important;
+    border: 2px solid #fff !important;
+    box-shadow: 0 0.5px 2px rgba(0,0,0,0.25) !important;
     margin-top: -2px !important;
 }
 
@@ -679,24 +756,24 @@
 }
 
 .webext-draw-slider-track input[type="range"]::-webkit-slider-thumb:hover {
-    transform: scale(1.1) !important;
+    transform: scale(1.15) !important;
 }
 
 .webext-draw-slider-track input[type="range"]::-moz-range-track {
-    height: 16px !important;
+    height: 10px !important;
     background: transparent !important;
     border: none !important;
-    border-radius: 8px !important;
+    border-radius: 5px !important;
 }
 
 .webext-draw-slider-track input[type="range"]::-moz-range-thumb {
-    width: 20px !important;
-    height: 20px !important;
+    width: 14px !important;
+    height: 14px !important;
     border-radius: 50% !important;
     background: #333 !important;
     cursor: pointer !important;
-    border: 2.5px solid #fff !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.3) !important;
+    border: 2px solid #fff !important;
+    box-shadow: 0 0.5px 2px rgba(0,0,0,0.25) !important;
 }
 
 .webext-draw-size-track input[type="range"]::-moz-range-thumb {

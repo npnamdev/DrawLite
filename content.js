@@ -16,12 +16,14 @@ class WebDrawingExtension {
         this.lastX = 0;
         this.lastY = 0;
         this.isInitialized = false;
-        this.drawingMode = 'pen'; // pen, rectangle, circle, arrow, line, triangle, star, move, eraser, picker
+        this.drawingMode = 'cursor'; // cursor, pen, rectangle, circle, arrow, line, triangle, star, move, eraser, picker
         this.shapeStartX = 0;
         this.shapeStartY = 0;
         this.uiElement = null;
         this.isToolbarVisible = false;
         this.isToolbarCollapsed = false;
+        this.pinState = localStorage.getItem('webext-draw-pinned') || 'none'; // 'none', 'right'
+        this.drawingsVisible = true;
         this.shapes = []; // Store all shapes for movement
         this.selectedShape = null; // Currently selected shape for moving
         this.selectedShapes = []; // Multiple selected shapes
@@ -80,6 +82,9 @@ class WebDrawingExtension {
     }
 
     hideExtension() {
+        // Reset page margins from pinning
+        document.documentElement.style.marginRight = '';
+        document.documentElement.style.marginLeft = '';
         this.hideToolbar();
         this.cleanupExistingElements();
         this.isInitialized = false;
@@ -117,17 +122,37 @@ class WebDrawingExtension {
         this.isToolbarVisible = false;
     }
 
+    togglePin(side) {
+        // Toggle: if already pinned to same side, unpin. Otherwise pin to new side.
+        this.pinState = (this.pinState === side) ? 'none' : side;
+        localStorage.setItem('webext-draw-pinned', this.pinState);
+        this.applyPinState();
+    }
+
+    applyPinState() {
+        const pinBtns = document.querySelectorAll('.webext-draw-pin-btn');
+        if (!pinBtns.length) return;
+
+        // Reset
+        this.uiElement.classList.remove('pinned');
+        pinBtns.forEach(b => b.classList.remove('active'));
+        document.documentElement.style.marginRight = '';
+
+        if (this.pinState === 'right') {
+            this.uiElement.classList.add('pinned');
+            document.querySelector('[data-tool="pin-right"]')?.classList.add('active');
+            document.documentElement.style.marginRight = '62px';
+        }
+        // When 'none', CSS defaults apply (horizontal bottom center)
+    }
+
     toggleToolbarCollapse() {
         this.isToolbarCollapsed = !this.isToolbarCollapsed;
         
         if (this.isToolbarCollapsed) {
-            // Hide toolbar to the right, keep toggle button on left
-            this.uiElement.style.right = '-100px';
             this.uiElement.style.opacity = '0';
             this.uiElement.style.pointerEvents = 'none';
         } else {
-            // Show toolbar on the right
-            this.uiElement.style.right = '15px';
             this.uiElement.style.opacity = '1';
             this.uiElement.style.pointerEvents = 'auto';
         }
@@ -163,18 +188,16 @@ class WebDrawingExtension {
         this.createUI();
         this.setupEventListeners();
         this.updateOpacityTrack();
+        this.applyPinState();
         this.isInitialized = true;
         this.showToolbar(); // Show toolbar directly instead of toggle button
         this.enableDrawing(); // Enable drawing by default
+        // Set cursor tool active by default
+        document.querySelectorAll('.webext-draw-tool-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector('[data-tool="cursor"]')?.classList.add('active');
 
         // Toolbar is on the right, so remove toolbar-left class for popup positioning
         this.uiElement.classList.remove('toolbar-left');
-
-        // Set pen tool as active by default
-        const penTool = document.querySelector('.webext-draw-tool-btn[data-tool="pen"]');
-        if (penTool) {
-            penTool.classList.add('active');
-        }
         
         // Restore saved color selection
         this.restoreSavedColors();
@@ -300,6 +323,13 @@ class WebDrawingExtension {
                     </div>
                 </div>
                 <div class="webext-draw-toolbar-content">
+                    <!-- Cursor mode -->
+                    <button class="webext-draw-tool-btn" data-tool="cursor" title="Con trỏ chuột">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 3l14 8-7 2-3 7z"/>
+                            <path d="M12 13l5 5"/>
+                        </svg>
+                    </button>
                     <!-- Drawing Tools -->
                     <button class="webext-draw-tool-btn" data-tool="pen" title="Bút vẽ">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -376,6 +406,19 @@ class WebDrawingExtension {
                         </svg>
                     </button>
                 </div>
+                <button class="webext-draw-tool-btn" data-tool="toggle-visibility" title="Ẩn/hiện nét vẽ">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                </button>
+                <button class="webext-draw-tool-btn webext-draw-pin-btn" data-tool="pin-right" title="Ghim phải">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 3v18"/>
+                        <path d="M7 8h10l-2 4H7z"/>
+                        <path d="M12 12v5"/>
+                    </svg>
+                </button>
                 <button class="webext-draw-close-btn" title="Đóng">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <line x1="18" y1="6" x2="6" y2="18"/>
@@ -637,6 +680,16 @@ class WebDrawingExtension {
                 // Handle screenshot tool - show popup
                 if (tool === 'screenshot') {
                     this.togglePopup('screenshot', button);
+                    return;
+                }
+
+                // Handle pin tools
+                if (tool === 'toggle-visibility') {
+                    this.toggleDrawingsVisibility();
+                    return;
+                }
+                if (tool === 'pin-right') {
+                    this.togglePin('right');
                     return;
                 }
 
@@ -2661,29 +2714,43 @@ class WebDrawingExtension {
         const buttonRect = button.getBoundingClientRect();
         const isToolbarLeft = this.uiElement.classList.contains('toolbar-left');
 
+        const isPinned = this.pinState !== 'none';
+
         const positionPopup = (popup) => {
-            if (isToolbarLeft) {
-                popup.style.left = (buttonRect.right + 10) + 'px';
-                popup.style.right = 'auto';
-            } else {
-                popup.style.right = (window.innerWidth - buttonRect.left + 10) + 'px';
-                popup.style.left = 'auto';
-            }
-            
-            // Show popup temporarily to get its height
+            // Show popup temporarily to get its dimensions
             popup.style.visibility = 'hidden';
             popup.style.display = 'block';
             const popupHeight = popup.offsetHeight;
+            const popupWidth = popup.offsetWidth;
             popup.style.visibility = '';
-            
-            // Check if popup would go below viewport
-            const spaceBelow = window.innerHeight - buttonRect.top;
-            if (spaceBelow < popupHeight) {
-                // Position popup above or adjust to fit
-                const newTop = Math.max(10, window.innerHeight - popupHeight - 10);
-                popup.style.top = newTop + 'px';
+
+            if (!isPinned) {
+                // Toolbar is horizontal at bottom — show popup above the button
+                let left = buttonRect.left + (buttonRect.width / 2) - (popupWidth / 2);
+                // Keep within viewport
+                left = Math.max(10, Math.min(left, window.innerWidth - popupWidth - 10));
+                popup.style.left = left + 'px';
+                popup.style.right = 'auto';
+                popup.style.top = (buttonRect.top - popupHeight - 10) + 'px';
+            } else if (isToolbarLeft) {
+                popup.style.left = (buttonRect.right + 10) + 'px';
+                popup.style.right = 'auto';
+                // Check if popup would go below viewport
+                const spaceBelow = window.innerHeight - buttonRect.top;
+                if (spaceBelow < popupHeight) {
+                    popup.style.top = Math.max(10, window.innerHeight - popupHeight - 10) + 'px';
+                } else {
+                    popup.style.top = buttonRect.top + 'px';
+                }
             } else {
-                popup.style.top = buttonRect.top + 'px';
+                popup.style.right = (window.innerWidth - buttonRect.left + 10) + 'px';
+                popup.style.left = 'auto';
+                const spaceBelow = window.innerHeight - buttonRect.top;
+                if (spaceBelow < popupHeight) {
+                    popup.style.top = Math.max(10, window.innerHeight - popupHeight - 10) + 'px';
+                } else {
+                    popup.style.top = buttonRect.top + 'px';
+                }
             }
             popup.style.bottom = 'auto';
             popup.style.transform = 'none';
@@ -2784,28 +2851,40 @@ class WebDrawingExtension {
         const shapesBtn = document.querySelector('.webext-draw-tool-btn[data-tool="shapes"]');
         const screenshotBtn = document.querySelector('.webext-draw-tool-btn[data-tool="screenshot"]');
         const isToolbarLeft = this.uiElement.classList.contains('toolbar-left');
+        const isPinned = this.pinState !== 'none';
 
         const updatePopupPosition = (popup, btn) => {
             if (!popup || popup.style.display !== 'block' || !btn) return;
-            
+
             const buttonRect = btn.getBoundingClientRect();
             const popupHeight = popup.offsetHeight;
+            const popupWidth = popup.offsetWidth;
 
-            if (isToolbarLeft) {
+            if (!isPinned) {
+                // Toolbar is horizontal — show popup above
+                let left = buttonRect.left + (buttonRect.width / 2) - (popupWidth / 2);
+                left = Math.max(10, Math.min(left, window.innerWidth - popupWidth - 10));
+                popup.style.left = left + 'px';
+                popup.style.right = 'auto';
+                popup.style.top = (buttonRect.top - popupHeight - 10) + 'px';
+            } else if (isToolbarLeft) {
                 popup.style.left = (buttonRect.right + 10) + 'px';
                 popup.style.right = 'auto';
+                const spaceBelow = window.innerHeight - buttonRect.top;
+                if (spaceBelow < popupHeight) {
+                    popup.style.top = Math.max(10, window.innerHeight - popupHeight - 10) + 'px';
+                } else {
+                    popup.style.top = buttonRect.top + 'px';
+                }
             } else {
                 popup.style.right = (window.innerWidth - buttonRect.left + 10) + 'px';
                 popup.style.left = 'auto';
-            }
-            
-            // Check if popup would go below viewport
-            const spaceBelow = window.innerHeight - buttonRect.top;
-            if (spaceBelow < popupHeight) {
-                const newTop = Math.max(10, window.innerHeight - popupHeight - 10);
-                popup.style.top = newTop + 'px';
-            } else {
-                popup.style.top = buttonRect.top + 'px';
+                const spaceBelow = window.innerHeight - buttonRect.top;
+                if (spaceBelow < popupHeight) {
+                    popup.style.top = Math.max(10, window.innerHeight - popupHeight - 10) + 'px';
+                } else {
+                    popup.style.top = buttonRect.top + 'px';
+                }
             }
             popup.style.bottom = 'auto';
             popup.style.transform = 'none';
@@ -2841,8 +2920,19 @@ class WebDrawingExtension {
     updateCursor() {
         if (!this.isEnabled) {
             this.canvas.style.cursor = 'default';
+            this.canvas.style.pointerEvents = 'none';
             return;
         }
+
+        if (this.drawingMode === 'cursor') {
+            // Cursor mode: let clicks pass through to the page
+            this.canvas.style.pointerEvents = 'none';
+            this.canvas.style.cursor = 'default';
+            return;
+        }
+
+        // All other tools: canvas captures events
+        this.canvas.style.pointerEvents = 'auto';
 
         switch (this.drawingMode) {
             case 'pen':
