@@ -1,0 +1,33 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+
+  <!-- Pencil body -->
+  <g transform="translate(24, 20) rotate(0)">
+    <!-- Pencil shape -->
+    <path d="M52 88L28 64L68 24L92 48L52 88Z" fill="white" fill-opacity="0.95"/>
+    <path d="M28 64L20 92L48 84L28 64Z" fill="#FFD54F"/>
+    <path d="M68 24L76 16C78.2 13.8 81.8 13.8 84 16L96 28C98.2 30.2 98.2 33.8 96 36L88 44L68 24Z" fill="white" fill-opacity="0.8"/>
+
+    <!-- Pencil tip -->
+    <path d="M20 92L24 78L34 88L20 92Z" fill="#333"/>
+
+    <!-- Pencil lines -->
+    <line x1="36" y1="56" x2="72" y2="20" stroke="#5a67e8" stroke-width="2" stroke-opacity="0.3"/>
+    <line x1="44" y1="64" x2="80" y2="28" stroke="#5a67e8" stroke-width="2" stroke-opacity="0.3"/>
+  </g>
+
+  <!-- Small drawn line accent -->
+  <path d="M78 85 Q88 75 98 82 Q108 89 98 95" stroke="white" stroke-width="3.5" stroke-linecap="round" fill="none" opacity="0.7"/>
+
+  <!-- Small circle accent -->
+  <circle cx="95" cy="35" r="6" stroke="white" stroke-width="2.5" fill="none" opacity="0.5"/>
+
+  <!-- Gradient -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6c7bf7"/>
+      <stop offset="100%" stop-color="#4a56d6"/>
+    </linearGradient>
+  </defs>
+</svg>

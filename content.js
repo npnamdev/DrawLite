@@ -92,6 +92,7 @@ class WebDrawingExtension {
         document.documentElement.style.marginRight = '';
         document.documentElement.style.marginLeft = '';
         this.removeAllBlurDivs();
+        this.hideContextToolbar();
         this.hideToolbar();
         this.cleanupExistingElements();
         this.isInitialized = false;
@@ -108,10 +109,93 @@ class WebDrawingExtension {
     }
 
     togglePin(side) {
-        // Toggle: if already pinned to same side, unpin. Otherwise pin to new side.
         this.pinState = (this.pinState === side) ? 'none' : side;
         localStorage.setItem('webext-draw-pinned', this.pinState);
         this.applyPinState();
+    }
+
+    togglePinPopover(button) {
+        const existing = document.getElementById('webext-pin-popover');
+        if (existing) { existing.remove(); return; }
+
+        const pop = document.createElement('div');
+        pop.id = 'webext-pin-popover';
+        pop.style.cssText = `
+            position: fixed; z-index: 2147483647;
+            background: white; border-radius: 12px; padding: 6px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15); border: 1px solid #e8eaf0;
+            display: flex; flex-direction: column; gap: 2px; min-width: 120px;
+            font-family: -apple-system, sans-serif;
+        `;
+
+        const options = [];
+        if (this.pinState !== 'left') options.push({ label: this.settings.lang === 'en' ? 'Pin Left' : 'Ghim trái', value: 'left', icon: '←' });
+        if (this.pinState !== 'right') options.push({ label: this.settings.lang === 'en' ? 'Pin Right' : 'Ghim phải', value: 'right', icon: '→' });
+        if (this.pinState !== 'none') options.push({ label: this.settings.lang === 'en' ? 'Float' : 'Nổi', value: 'none', icon: '↕' });
+
+        options.forEach(opt => {
+            const btn = document.createElement('button');
+            btn.textContent = `${opt.icon}  ${opt.label}`;
+            btn.style.cssText = `
+                display: flex; align-items: center; gap: 8px; width: 100%;
+                padding: 8px 12px; border: none; background: none; border-radius: 8px;
+                font-size: 13px; font-weight: 500; color: #333; cursor: pointer;
+                text-align: left; transition: background 0.15s;
+            `;
+            btn.addEventListener('mouseenter', () => btn.style.background = '#f0f1ff');
+            btn.addEventListener('mouseleave', () => btn.style.background = 'none');
+            btn.addEventListener('click', () => {
+                pop.remove();
+                this.togglePin(opt.value === 'none' ? this.pinState : opt.value);
+                if (opt.value === 'none') {
+                    this.pinState = 'none';
+                    localStorage.setItem('webext-draw-pinned', 'none');
+                    this.applyPinState();
+                }
+            });
+            pop.appendChild(btn);
+        });
+
+        // Position
+        const rect = button.getBoundingClientRect();
+        if (this.pinState === 'left') {
+            pop.style.left = (rect.right + 8) + 'px';
+            pop.style.top = rect.top + 'px';
+        } else if (this.pinState === 'right') {
+            pop.style.right = (window.innerWidth - rect.left + 8) + 'px';
+            pop.style.top = rect.top + 'px';
+        } else {
+            let left = rect.left + rect.width / 2 - 60;
+            left = Math.max(10, Math.min(left, window.innerWidth - 140));
+            pop.style.left = left + 'px';
+            pop.style.top = (rect.top - options.length * 40 - 16) + 'px';
+        }
+
+        document.body.appendChild(pop);
+
+        // Close on click outside
+        const closeHandler = (e) => {
+            if (!pop.contains(e.target) && e.target !== button) {
+                pop.remove();
+                document.removeEventListener('mousedown', closeHandler);
+            }
+        };
+        setTimeout(() => document.addEventListener('mousedown', closeHandler), 10);
+    }
+
+    cyclePin() {
+        // Cycle: none → left → right → none
+        if (this.pinState === 'none') this.pinState = 'left';
+        else if (this.pinState === 'left') this.pinState = 'right';
+        else this.pinState = 'none';
+        localStorage.setItem('webext-draw-pinned', this.pinState);
+        this.applyPinState();
+        // Update tooltip
+        const btn = document.querySelector('[data-tool="pin-cycle"]');
+        if (btn) {
+            const labels = { none: 'Ghim trái', left: 'Ghim phải', right: 'Bỏ ghim' };
+            btn.title = labels[this.pinState] || 'Ghim thanh công cụ';
+        }
     }
 
     applyPinState() {
@@ -124,13 +208,14 @@ class WebDrawingExtension {
         document.documentElement.style.marginRight = '';
         document.documentElement.style.marginLeft = '';
 
+        const pinBtn = document.querySelector('[data-tool="pin-cycle"]');
         if (this.pinState === 'right') {
             this.uiElement.classList.add('pinned');
-            document.querySelector('[data-tool="pin-right"]')?.classList.add('active');
+            pinBtn?.classList.add('active');
             document.documentElement.style.marginRight = '50px';
         } else if (this.pinState === 'left') {
             this.uiElement.classList.add('pinned-left');
-            document.querySelector('[data-tool="pin-left"]')?.classList.add('active');
+            pinBtn?.classList.add('active');
             document.documentElement.style.marginLeft = '50px';
         }
     }
@@ -314,18 +399,6 @@ class WebDrawingExtension {
                             <line x1="11" y1="11" x2="17" y2="17"/>
                         </svg>
                     </button>
-                    <button class="webext-draw-tool-btn webext-draw-action-btn" data-tool="undo" title="Hoàn tác (Ctrl+Z)" data-disabled="true">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="1 4 1 10 7 10"/>
-                            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
-                        </svg>
-                    </button>
-                    <button class="webext-draw-tool-btn webext-draw-action-btn" data-tool="redo" title="Làm lại (Ctrl+Shift+Z)" data-disabled="true">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="23 4 23 10 17 10"/>
-                            <path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/>
-                        </svg>
-                    </button>
                     <!-- Style -->
                     <button class="webext-draw-tool-btn" data-tool="color" title="Màu sắc">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -355,12 +428,6 @@ class WebDrawingExtension {
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                             <circle cx="12" cy="13" r="4"/>
-                        </svg>
-                    </button>
-                    <button class="webext-draw-tool-btn webext-draw-action-btn" data-tool="duplicate" title="Nhân đôi (Ctrl+D)">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="9" y="9" width="13" height="13" rx="2"/>
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                         </svg>
                     </button>
                     <button class="webext-draw-tool-btn" data-tool="ruler" title="Thước đo">
@@ -399,24 +466,28 @@ class WebDrawingExtension {
                         </svg>
                     </button>
                 </div>
+                <button class="webext-draw-tool-btn webext-draw-action-btn" data-tool="undo" title="Hoàn tác (Ctrl+Z)" data-disabled="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="1 4 1 10 7 10"/>
+                        <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                    </svg>
+                </button>
+                <button class="webext-draw-tool-btn webext-draw-action-btn" data-tool="redo" title="Làm lại (Ctrl+Shift+Z)" data-disabled="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10"/>
+                        <path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/>
+                    </svg>
+                </button>
                 <button class="webext-draw-tool-btn" data-tool="toggle-visibility" title="Ẩn/hiện nét vẽ">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                         <circle cx="12" cy="12" r="3"/>
                     </svg>
                 </button>
-                <button class="webext-draw-tool-btn webext-draw-pin-btn" data-tool="pin-left" title="Ghim trái">
+                <button class="webext-draw-tool-btn webext-draw-pin-btn" data-tool="pin-cycle" title="Ghim thanh công cụ">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M3 3v18"/>
-                        <path d="M17 8H7l2 4h10z"/>
-                        <path d="M12 12v5"/>
-                    </svg>
-                </button>
-                <button class="webext-draw-tool-btn webext-draw-pin-btn" data-tool="pin-right" title="Ghim phải">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 3v18"/>
-                        <path d="M7 8h10l-2 4H7z"/>
-                        <path d="M12 12v5"/>
+                        <path d="M12 17v5"/>
+                        <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
                     </svg>
                 </button>
                 <button class="webext-draw-tool-btn" data-tool="settings" title="Cài đặt">
@@ -690,16 +761,8 @@ class WebDrawingExtension {
                     this.toggleDrawingsVisibility();
                     return;
                 }
-                if (tool === 'duplicate') {
-                    this.duplicateSelected();
-                    return;
-                }
-                if (tool === 'pin-left') {
-                    this.togglePin('left');
-                    return;
-                }
-                if (tool === 'pin-right') {
-                    this.togglePin('right');
+                if (tool === 'pin-cycle') {
+                    this.togglePinPopover(button);
                     return;
                 }
                 if (tool === 'settings') {
@@ -1151,6 +1214,7 @@ class WebDrawingExtension {
         this.isEnabled = false;
         this.isDrawing = false;
         this.canvas.style.pointerEvents = 'none';
+        this.hideContextToolbar();
     }
 
     startDrawing(e) {
@@ -2869,8 +2933,8 @@ class WebDrawingExtension {
             color: 'Màu sắc', picker: 'Lấy màu', clearall: 'Xóa tất cả',
             screenshot: 'Chụp màn hình', duplicate: 'Nhân đôi', ruler: 'Thước đo',
             stepmarker: 'Đánh số', blur: 'Làm mờ', spotlight: 'Spotlight',
-            'toggle-visibility': 'Ẩn/hiện', 'pin-left': 'Ghim trái',
-            'pin-right': 'Ghim phải', settings: 'Cài đặt'
+            'toggle-visibility': 'Ẩn/hiện', 'pin-cycle': 'Ghim',
+            settings: 'Cài đặt'
         };
         const en = {
             cursor: 'Cursor', pen: 'Pen', text: 'Text', shapes: 'Shapes',
@@ -2878,8 +2942,8 @@ class WebDrawingExtension {
             color: 'Color', picker: 'Pick Color', clearall: 'Clear All',
             screenshot: 'Screenshot', duplicate: 'Duplicate', ruler: 'Ruler',
             stepmarker: 'Step Marker', blur: 'Blur', spotlight: 'Spotlight',
-            'toggle-visibility': 'Show/Hide', 'pin-left': 'Pin Left',
-            'pin-right': 'Pin Right', settings: 'Settings'
+            'toggle-visibility': 'Show/Hide', 'pin-cycle': 'Pin',
+            settings: 'Settings'
         };
         const labels = this.settings.lang === 'en' ? en : vi;
         return labels[tool] || tool;
@@ -3597,6 +3661,89 @@ class WebDrawingExtension {
                 this.drawResizeHandles(bounds);
             }
         }
+
+        // Show/hide context toolbar for selected shape(s)
+        const hasSelection = this.drawingMode === 'move' && (this.selectedShape || this.selectedShapes.length > 0);
+        if (hasSelection) {
+            this.showContextToolbar();
+        } else {
+            this.hideContextToolbar();
+        }
+    }
+
+    showContextToolbar() {
+        let bar = document.getElementById('webext-context-bar');
+        const shape = this.selectedShape;
+        if (!shape) { this.hideContextToolbar(); return; }
+
+        const bounds = this.getShapeBounds(shape);
+        const isVi = this.settings?.lang !== 'en';
+
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.id = 'webext-context-bar';
+            bar.style.cssText = `
+                position: fixed; z-index: 2147483646;
+                background: #f0f0f0; border-radius: 8px; padding: 3px;
+                box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+                border: 1px solid #d0d0d0;
+                display: flex; gap: 2px;
+                font-family: -apple-system, sans-serif;
+            `;
+            document.body.appendChild(bar);
+        }
+
+        bar.innerHTML = '';
+
+        const actions = [
+            { icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>', label: isVi ? 'Nhân đôi' : 'Duplicate', action: 'duplicate' },
+            { icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>', label: isVi ? 'Xoá' : 'Delete', action: 'delete' }
+        ];
+
+        actions.forEach(a => {
+            const btn = document.createElement('button');
+            btn.innerHTML = a.icon;
+            btn.title = a.label;
+            btn.style.cssText = `
+                display: flex; align-items: center; justify-content: center;
+                width: 32px; height: 32px; border: none; background: white;
+                border-radius: 6px; cursor: pointer; color: #666; transition: all 0.15s;
+            `;
+            btn.addEventListener('mouseenter', () => {
+                btn.style.background = a.action === 'delete' ? '#fee' : '#e8e8e8';
+                btn.style.color = a.action === 'delete' ? '#e53935' : '#333';
+                btn.style.transform = 'scale(1.05)';
+            });
+            btn.addEventListener('mouseleave', () => {
+                btn.style.background = 'white';
+                btn.style.color = '#666';
+                btn.style.transform = 'scale(1)';
+            });
+            btn.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (a.action === 'duplicate') this.duplicateSelected();
+                if (a.action === 'delete') this.deleteSelectedShapes();
+                this.hideContextToolbar();
+            });
+            bar.appendChild(btn);
+        });
+
+        // Position below the shape
+        const barWidth = actions.length * 36 + 6;
+        let left = bounds.x + bounds.width / 2 - barWidth / 2;
+        left = Math.max(5, Math.min(left, window.innerWidth - barWidth - 5));
+        let top = bounds.y + bounds.height + 10;
+        if (top + 40 > window.innerHeight) top = bounds.y - 44;
+
+        bar.style.left = left + 'px';
+        bar.style.top = top + 'px';
+        bar.style.display = 'flex';
+    }
+
+    hideContextToolbar() {
+        const bar = document.getElementById('webext-context-bar');
+        if (bar) bar.style.display = 'none';
     }
 
     togglePopup(type, button) {
