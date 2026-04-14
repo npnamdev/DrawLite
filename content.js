@@ -4250,4 +4250,6 @@ class WebDrawingExtension {
 
 }
 
-new WebDrawingExtension();
+if (!window._drawLiteInstance) {
+    window._drawLiteInstance = new WebDrawingExtension();
+}
