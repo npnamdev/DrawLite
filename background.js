@@ -25,4 +25,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true;
   }
+
+  if (request.action === "downloadImage") {
+    const options = { url: request.url };
+    if (request.filename) {
+      options.filename = request.filename;
+    }
+    chrome.downloads.download(options);
+    return false;
+  }
 });

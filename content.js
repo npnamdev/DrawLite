@@ -465,6 +465,15 @@ class WebDrawingExtension {
                             <circle cx="12" cy="12" r="5" fill="white" stroke="currentColor"/>
                         </svg>
                     </button>
+                    <button class="webext-draw-tool-btn" data-tool="imagegrab" title="Lấy ảnh từ trang">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/>
+                            <circle cx="8.5" cy="8.5" r="1.5"/>
+                            <polyline points="21 15 16 10 5 21"/>
+                            <line x1="2" y1="2" x2="7" y2="2" stroke-width="2"/>
+                            <line x1="4.5" y1="0" x2="4.5" y2="4" stroke-width="2"/>
+                        </svg>
+                    </button>
                 </div>
                 <button class="webext-draw-tool-btn webext-draw-action-btn" data-tool="undo" title="Hoàn tác (Ctrl+Z)" data-disabled="true">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -753,6 +762,12 @@ class WebDrawingExtension {
                 // Handle screenshot tool - show popup
                 if (tool === 'screenshot') {
                     this.togglePopup('screenshot', button);
+                    return;
+                }
+
+                // Handle image grab tool
+                if (tool === 'imagegrab') {
+                    this.openImageGrabber();
                     return;
                 }
 
@@ -2933,7 +2948,7 @@ class WebDrawingExtension {
             color: 'Màu sắc', picker: 'Lấy màu', clearall: 'Xóa tất cả',
             screenshot: 'Chụp màn hình', duplicate: 'Nhân đôi', ruler: 'Thước đo',
             stepmarker: 'Đánh số', blur: 'Làm mờ', spotlight: 'Spotlight',
-            'toggle-visibility': 'Ẩn/hiện', 'pin-cycle': 'Ghim',
+            imagegrab: 'Lấy ảnh', 'toggle-visibility': 'Ẩn/hiện', 'pin-cycle': 'Ghim',
             settings: 'Cài đặt'
         };
         const en = {
@@ -2942,7 +2957,7 @@ class WebDrawingExtension {
             color: 'Color', picker: 'Pick Color', clearall: 'Clear All',
             screenshot: 'Screenshot', duplicate: 'Duplicate', ruler: 'Ruler',
             stepmarker: 'Step Marker', blur: 'Blur', spotlight: 'Spotlight',
-            'toggle-visibility': 'Show/Hide', 'pin-cycle': 'Pin',
+            imagegrab: 'Image Grab', 'toggle-visibility': 'Show/Hide', 'pin-cycle': 'Pin',
             settings: 'Settings'
         };
         const labels = this.settings.lang === 'en' ? en : vi;
@@ -4246,6 +4261,461 @@ class WebDrawingExtension {
         if (toolbar) toolbar.style.display = originalToolbarDisplay;
         this.canvas.style.display = originalCanvasDisplay;
         this.svgOverlay.style.display = originalSvgDisplay;
+    }
+
+    // ========== IMAGE GRABBER ==========
+
+    grabAllImages() {
+        const images = new Map(); // url -> {url, width, height, type}
+
+        const addImage = (url) => {
+            if (!url || images.has(url)) return;
+            // Skip tiny data URIs (likely tracking pixels)
+            if (url.startsWith('data:') && url.length < 200) return;
+            // Skip SVG data URIs that are likely icons
+            if (url.startsWith('data:image/svg+xml') && url.length < 500) return;
+
+            let type = 'unknown';
+            try {
+                const pathname = new URL(url, location.href).pathname.toLowerCase();
+                if (pathname.match(/\.png/)) type = 'PNG';
+                else if (pathname.match(/\.jpe?g/)) type = 'JPEG';
+                else if (pathname.match(/\.gif/)) type = 'GIF';
+                else if (pathname.match(/\.webp/)) type = 'WebP';
+                else if (pathname.match(/\.svg/)) type = 'SVG';
+                else if (pathname.match(/\.ico/)) type = 'ICO';
+                else if (pathname.match(/\.bmp/)) type = 'BMP';
+                else if (pathname.match(/\.avif/)) type = 'AVIF';
+                else if (url.startsWith('data:image/png')) type = 'PNG';
+                else if (url.startsWith('data:image/jpeg')) type = 'JPEG';
+                else if (url.startsWith('data:image/gif')) type = 'GIF';
+                else if (url.startsWith('data:image/webp')) type = 'WebP';
+                else if (url.startsWith('data:image/svg')) type = 'SVG';
+            } catch (e) {}
+
+            images.set(url, { url, type, width: 0, height: 0 });
+        };
+
+        const resolveUrl = (url) => {
+            if (!url) return null;
+            try {
+                return new URL(url, location.href).href;
+            } catch (e) {
+                return null;
+            }
+        };
+
+        // 1. <img> elements
+        document.querySelectorAll('img').forEach(img => {
+            if (img.src) addImage(resolveUrl(img.src));
+            if (img.currentSrc) addImage(resolveUrl(img.currentSrc));
+            if (img.srcset) {
+                img.srcset.split(',').forEach(s => {
+                    const url = s.trim().split(/\s+/)[0];
+                    if (url) addImage(resolveUrl(url));
+                });
+            }
+            const imgData = images.get(resolveUrl(img.src) || resolveUrl(img.currentSrc));
+            if (imgData && img.naturalWidth) {
+                imgData.width = img.naturalWidth;
+                imgData.height = img.naturalHeight;
+            }
+        });
+
+        // 2. <picture> > <source>
+        document.querySelectorAll('picture source').forEach(source => {
+            if (source.srcset) {
+                source.srcset.split(',').forEach(s => {
+                    const url = s.trim().split(/\s+/)[0];
+                    if (url) addImage(resolveUrl(url));
+                });
+            }
+        });
+
+        // 3. CSS background-image on all elements
+        const allElements = document.querySelectorAll('*');
+        allElements.forEach(el => {
+            if (el.closest('#webext-draw-ui') || el.closest('#webext-imagegrab-modal')) return;
+            try {
+                const style = getComputedStyle(el);
+                const bg = style.backgroundImage;
+                if (bg && bg !== 'none') {
+                    const urlMatches = bg.matchAll(/url\(["']?([^"')]+)["']?\)/g);
+                    for (const match of urlMatches) {
+                        addImage(resolveUrl(match[1]));
+                    }
+                }
+            } catch (e) {}
+        });
+
+        // 4. <video poster>
+        document.querySelectorAll('video[poster]').forEach(video => {
+            addImage(resolveUrl(video.poster));
+        });
+
+        // 5. SVG <image>
+        document.querySelectorAll('svg image').forEach(img => {
+            const href = img.getAttribute('href') || img.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
+            if (href) addImage(resolveUrl(href));
+        });
+
+        // 6. <link> icons
+        document.querySelectorAll('link[rel*="icon"], link[rel="apple-touch-icon"]').forEach(link => {
+            if (link.href) addImage(resolveUrl(link.href));
+        });
+
+        // 7. <meta> og:image, twitter:image
+        document.querySelectorAll('meta[property="og:image"], meta[name="twitter:image"]').forEach(meta => {
+            const content = meta.getAttribute('content');
+            if (content) addImage(resolveUrl(content));
+        });
+
+        // 8. <input type="image">
+        document.querySelectorAll('input[type="image"]').forEach(input => {
+            if (input.src) addImage(resolveUrl(input.src));
+        });
+
+        // 9. <object> and <embed> with image types
+        document.querySelectorAll('object[data], embed[src]').forEach(el => {
+            const src = el.getAttribute('data') || el.getAttribute('src');
+            if (src && /\.(png|jpe?g|gif|webp|svg|ico|bmp|avif)/i.test(src)) {
+                addImage(resolveUrl(src));
+            }
+        });
+
+        return Array.from(images.values());
+    }
+
+    openImageGrabber() {
+        const existing = document.getElementById('webext-imagegrab-modal');
+        if (existing) { existing.remove(); return; }
+
+        const images = this.grabAllImages();
+        const isVi = this.settings.lang !== 'en';
+
+        const labels = isVi ? {
+            title: 'Lấy ảnh từ trang',
+            found: `Tìm thấy ${images.length} ảnh`,
+            noImages: 'Không tìm thấy ảnh nào trên trang này.',
+            downloadAll: 'Tải tất cả (ZIP)',
+            downloading: 'Đang tải...',
+            close: 'Đóng',
+            download: 'Tải',
+            creating: 'Đang tạo ZIP...',
+        } : {
+            title: 'Image Grabber',
+            found: `Found ${images.length} images`,
+            noImages: 'No images found on this page.',
+            downloadAll: 'Download All (ZIP)',
+            downloading: 'Downloading...',
+            close: 'Close',
+            download: 'Download',
+            creating: 'Creating ZIP...',
+        };
+
+        const modal = document.createElement('div');
+        modal.id = 'webext-imagegrab-modal';
+
+        // Build overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'webext-ig-overlay';
+        modal.appendChild(overlay);
+
+        // Build container
+        const container = document.createElement('div');
+        container.className = 'webext-ig-container';
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'webext-ig-header';
+
+        const headerLeft = document.createElement('div');
+        const title = document.createElement('h2');
+        title.className = 'webext-ig-title';
+        title.textContent = labels.title;
+        const count = document.createElement('span');
+        count.className = 'webext-ig-count';
+        count.textContent = labels.found;
+        headerLeft.appendChild(title);
+        headerLeft.appendChild(count);
+
+        const headerActions = document.createElement('div');
+        headerActions.className = 'webext-ig-header-actions';
+
+        let downloadAllBtn = null;
+        if (images.length > 0) {
+            downloadAllBtn = document.createElement('button');
+            downloadAllBtn.className = 'webext-ig-download-all-btn';
+            downloadAllBtn.textContent = labels.downloadAll;
+            headerActions.appendChild(downloadAllBtn);
+        }
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'webext-ig-close-btn';
+        const closeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        closeSvg.setAttribute('width', '20');
+        closeSvg.setAttribute('height', '20');
+        closeSvg.setAttribute('viewBox', '0 0 24 24');
+        closeSvg.setAttribute('fill', 'none');
+        closeSvg.setAttribute('stroke', 'currentColor');
+        closeSvg.setAttribute('stroke-width', '2');
+        const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line1.setAttribute('x1', '18'); line1.setAttribute('y1', '6');
+        line1.setAttribute('x2', '6'); line1.setAttribute('y2', '18');
+        const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line2.setAttribute('x1', '6'); line2.setAttribute('y1', '6');
+        line2.setAttribute('x2', '18'); line2.setAttribute('y2', '18');
+        closeSvg.appendChild(line1);
+        closeSvg.appendChild(line2);
+        closeBtn.appendChild(closeSvg);
+        headerActions.appendChild(closeBtn);
+
+        header.appendChild(headerLeft);
+        header.appendChild(headerActions);
+        container.appendChild(header);
+
+        // Grid
+        const grid = document.createElement('div');
+        grid.className = 'webext-ig-grid';
+
+        if (images.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'webext-ig-empty';
+            empty.textContent = labels.noImages;
+            grid.appendChild(empty);
+        } else {
+            images.forEach((img, i) => {
+                const card = document.createElement('div');
+                card.className = 'webext-ig-card';
+                card.dataset.index = i;
+
+                const thumb = document.createElement('div');
+                thumb.className = 'webext-ig-thumb';
+                const imgEl = document.createElement('img');
+                imgEl.src = img.url;
+                imgEl.loading = 'lazy';
+                imgEl.addEventListener('error', () => {
+                    thumb.textContent = '';
+                    const errDiv = document.createElement('div');
+                    errDiv.className = 'webext-ig-error';
+                    errDiv.textContent = 'Failed';
+                    thumb.appendChild(errDiv);
+                });
+                thumb.appendChild(imgEl);
+
+                const info = document.createElement('div');
+                info.className = 'webext-ig-card-info';
+                const typeSpan = document.createElement('span');
+                typeSpan.className = 'webext-ig-card-type';
+                typeSpan.textContent = img.type;
+                info.appendChild(typeSpan);
+                if (img.width) {
+                    const sizeSpan = document.createElement('span');
+                    sizeSpan.className = 'webext-ig-card-size';
+                    sizeSpan.textContent = `${img.width}\u00D7${img.height}`;
+                    info.appendChild(sizeSpan);
+                }
+
+                const cardOverlay = document.createElement('div');
+                cardOverlay.className = 'webext-ig-card-overlay';
+                const dlBtn = document.createElement('button');
+                dlBtn.className = 'webext-ig-card-download';
+                dlBtn.title = labels.download;
+                dlBtn.dataset.url = img.url;
+                const dlSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                dlSvg.setAttribute('width', '18');
+                dlSvg.setAttribute('height', '18');
+                dlSvg.setAttribute('viewBox', '0 0 24 24');
+                dlSvg.setAttribute('fill', 'none');
+                dlSvg.setAttribute('stroke', 'currentColor');
+                dlSvg.setAttribute('stroke-width', '2');
+                dlSvg.setAttribute('stroke-linecap', 'round');
+                dlSvg.setAttribute('stroke-linejoin', 'round');
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4');
+                const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                polyline.setAttribute('points', '7 10 12 15 17 10');
+                const dlLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                dlLine.setAttribute('x1', '12'); dlLine.setAttribute('y1', '15');
+                dlLine.setAttribute('x2', '12'); dlLine.setAttribute('y2', '3');
+                dlSvg.appendChild(path);
+                dlSvg.appendChild(polyline);
+                dlSvg.appendChild(dlLine);
+                dlBtn.appendChild(dlSvg);
+                cardOverlay.appendChild(dlBtn);
+
+                card.appendChild(thumb);
+                card.appendChild(info);
+                card.appendChild(cardOverlay);
+                grid.appendChild(card);
+
+                // Download single
+                dlBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.downloadImage(img.url);
+                });
+
+                // Click card to preview
+                card.addEventListener('click', (e) => {
+                    if (e.target.closest('.webext-ig-card-download')) return;
+                    this.showImagePreview(img, modal);
+                });
+            });
+        }
+
+        container.appendChild(grid);
+        modal.appendChild(container);
+        document.body.appendChild(modal);
+
+        // Close modal
+        const closeModal = () => modal.remove();
+        overlay.addEventListener('click', closeModal);
+        closeBtn.addEventListener('click', closeModal);
+
+        // Download all as ZIP
+        if (downloadAllBtn) {
+            downloadAllBtn.addEventListener('click', async () => {
+                downloadAllBtn.disabled = true;
+                downloadAllBtn.textContent = labels.creating;
+                try {
+                    await this.downloadAllAsZip(images, labels);
+                } catch (err) {
+                    console.error('ZIP download failed:', err);
+                    alert('Failed to create ZIP. Try downloading individual images.');
+                }
+                downloadAllBtn.disabled = false;
+                downloadAllBtn.textContent = labels.downloadAll;
+            });
+        }
+
+        // ESC to close
+        const escHandler = (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+    }
+
+    showImagePreview(img, modalEl) {
+        const existing = modalEl.querySelector('.webext-ig-preview');
+        if (existing) existing.remove();
+
+        const isVi = this.settings.lang !== 'en';
+
+        const preview = document.createElement('div');
+        preview.className = 'webext-ig-preview';
+
+        const backdrop = document.createElement('div');
+        backdrop.className = 'webext-ig-preview-backdrop';
+
+        const content = document.createElement('div');
+        content.className = 'webext-ig-preview-content';
+
+        const previewImg = document.createElement('img');
+        previewImg.src = img.url;
+
+        const actions = document.createElement('div');
+        actions.className = 'webext-ig-preview-actions';
+
+        const infoSpan = document.createElement('span');
+        infoSpan.className = 'webext-ig-preview-info';
+        infoSpan.textContent = img.type + (img.width ? ` \u00B7 ${img.width}\u00D7${img.height}` : '');
+
+        const dlButton = document.createElement('button');
+        dlButton.className = 'webext-ig-preview-download';
+        dlButton.textContent = isVi ? 'Tải ảnh' : 'Download';
+
+        const closeButton = document.createElement('button');
+        closeButton.className = 'webext-ig-preview-close';
+        closeButton.textContent = isVi ? 'Đóng' : 'Close';
+
+        actions.appendChild(infoSpan);
+        actions.appendChild(dlButton);
+        actions.appendChild(closeButton);
+        content.appendChild(previewImg);
+        content.appendChild(actions);
+        preview.appendChild(backdrop);
+        preview.appendChild(content);
+        modalEl.appendChild(preview);
+
+        backdrop.addEventListener('click', () => preview.remove());
+        closeButton.addEventListener('click', () => preview.remove());
+        dlButton.addEventListener('click', () => this.downloadImage(img.url));
+    }
+
+    downloadImage(url) {
+        chrome.runtime.sendMessage({ action: 'downloadImage', url });
+    }
+
+    async downloadAllAsZip(images, labels) {
+        // Dynamically load JSZip
+        if (!window.JSZip) {
+            await new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }
+
+        const zip = new JSZip();
+        const imgFolder = zip.folder('images');
+        let count = 0;
+
+        const downloadAllBtn = document.querySelector('.webext-ig-download-all-btn');
+
+        for (let i = 0; i < images.length; i++) {
+            const img = images[i];
+            if (downloadAllBtn) {
+                downloadAllBtn.textContent = `${labels.downloading} (${i + 1}/${images.length})`;
+            }
+            try {
+                const res = await fetch(img.url, img.url.startsWith('data:') ? {} : { mode: 'cors' });
+                const blob = await res.blob();
+                const ext = this.getImageExtension(img.url, blob.type);
+                const filename = `image_${String(i + 1).padStart(3, '0')}.${ext}`;
+                imgFolder.file(filename, blob);
+                count++;
+            } catch (e) {
+                console.warn('Failed to fetch image for ZIP:', img.url, e);
+            }
+        }
+
+        if (count === 0) {
+            alert(this.settings.lang !== 'en'
+                ? 'Không thể tải ảnh nào (có thể do CORS). Hãy thử tải từng ảnh riêng lẻ.'
+                : 'Could not fetch any images (possibly CORS). Try downloading individually.');
+            return;
+        }
+
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        const blobUrl = URL.createObjectURL(zipBlob);
+
+        chrome.runtime.sendMessage({
+            action: 'downloadImage',
+            url: blobUrl,
+            filename: `images_${new Date().toISOString().slice(0, 10)}.zip`
+        });
+
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    }
+
+    getImageExtension(url, mimeType) {
+        try {
+            const pathname = new URL(url, location.href).pathname;
+            const match = pathname.match(/\.(png|jpe?g|gif|webp|svg|ico|bmp|avif)(\?|$)/i);
+            if (match) return match[1].toLowerCase().replace('jpeg', 'jpg');
+        } catch (e) {}
+
+        const mimeMap = {
+            'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif',
+            'image/webp': 'webp', 'image/svg+xml': 'svg', 'image/x-icon': 'ico',
+            'image/bmp': 'bmp', 'image/avif': 'avif',
+        };
+        return mimeMap[mimeType] || 'png';
     }
 
 }
