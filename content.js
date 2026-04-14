@@ -2,14 +2,15 @@ class WebDrawingExtension {
     constructor() {
         this.isDrawing = false;
         this.isEnabled = false;
-        
-        // Load saved colors from localStorage or use defaults
-        this.currentColor = '#FF0000';
+
+        // Load settings from localStorage
+        this.settings = this.loadSettings();
+        this.currentColor = this.settings.defaultColor;
         this.fillColor = 'transparent';
         this.fillEnabled = false;
-        
-        this.lineWidth = 4;
-        this.strokeOpacity = 1; // 0-1
+
+        this.lineWidth = this.settings.defaultStrokeWidth;
+        this.strokeOpacity = this.settings.defaultOpacity;
         this.canvas = null;
         this.ctx = null;
         this.svgOverlay = null;
@@ -126,11 +127,11 @@ class WebDrawingExtension {
         if (this.pinState === 'right') {
             this.uiElement.classList.add('pinned');
             document.querySelector('[data-tool="pin-right"]')?.classList.add('active');
-            document.documentElement.style.marginRight = '62px';
+            document.documentElement.style.marginRight = '50px';
         } else if (this.pinState === 'left') {
             this.uiElement.classList.add('pinned-left');
             document.querySelector('[data-tool="pin-left"]')?.classList.add('active');
-            document.documentElement.style.marginLeft = '62px';
+            document.documentElement.style.marginLeft = '50px';
         }
     }
 
@@ -141,13 +142,16 @@ class WebDrawingExtension {
         this.createUI();
         this.setupEventListeners();
         this.updateOpacityTrack();
-        this.applyPinState();
+        this.applySettings();
         this.isInitialized = true;
-        this.showToolbar(); // Show toolbar directly instead of toggle button
-        this.enableDrawing(); // Enable drawing by default
-        // Set cursor tool active by default
+        this.showToolbar();
+        this.enableDrawing();
+        // Set default drawing mode
+        const defaultMode = this.settings.autoCursor ? 'cursor' : 'pen';
+        this.drawingMode = defaultMode;
         document.querySelectorAll('.webext-draw-tool-btn').forEach(b => b.classList.remove('active'));
-        document.querySelector('[data-tool="cursor"]')?.classList.add('active');
+        document.querySelector(`[data-tool="${defaultMode}"]`)?.classList.add('active');
+        this.updateCursor();
 
         // Toolbar is on the right, so remove toolbar-left class for popup positioning
         this.uiElement.classList.remove('toolbar-left');
@@ -413,6 +417,12 @@ class WebDrawingExtension {
                         <path d="M21 3v18"/>
                         <path d="M7 8h10l-2 4H7z"/>
                         <path d="M12 12v5"/>
+                    </svg>
+                </button>
+                <button class="webext-draw-tool-btn" data-tool="settings" title="Cài đặt">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
                     </svg>
                 </button>
                 <button class="webext-draw-close-btn" title="Đóng">
@@ -690,6 +700,10 @@ class WebDrawingExtension {
                 }
                 if (tool === 'pin-right') {
                     this.togglePin('right');
+                    return;
+                }
+                if (tool === 'settings') {
+                    this.openSettings();
                     return;
                 }
 
@@ -2761,6 +2775,450 @@ class WebDrawingExtension {
         }
     }
 
+    loadSettings() {
+        const defaults = {
+            lang: 'vi',
+            defaultColor: '#FF0000',
+            defaultStrokeWidth: 4,
+            defaultOpacity: 1,
+            defaultPosition: 'bottom', // bottom, left, right
+            autoCursor: true,
+            shortcutKey: 'KeyD',
+            saveDrawings: false,
+            screenshotFormat: 'png',
+            screenshotQuality: 0.9,
+            toolbarOrder: null, // null = default order
+            hiddenTools: []
+        };
+        try {
+            const saved = JSON.parse(localStorage.getItem('webext-draw-settings') || '{}');
+            return { ...defaults, ...saved };
+        } catch { return defaults; }
+    }
+
+    saveSettings() {
+        localStorage.setItem('webext-draw-settings', JSON.stringify(this.settings));
+    }
+
+    applySettings() {
+        this.currentColor = this.settings.defaultColor;
+        this.lineWidth = this.settings.defaultStrokeWidth;
+        this.strokeOpacity = this.settings.defaultOpacity;
+
+        // Apply toolbar position
+        if (this.settings.defaultPosition === 'left') {
+            this.pinState = 'left';
+        } else if (this.settings.defaultPosition === 'right') {
+            this.pinState = 'right';
+        } else {
+            this.pinState = 'none';
+        }
+        localStorage.setItem('webext-draw-pinned', this.pinState);
+        if (this.uiElement) this.applyPinState();
+
+        // Apply toolbar order
+        this.applyToolbarOrder();
+
+        // Apply hidden tools
+        this.applyHiddenTools();
+
+        // Update UI sliders
+        const widthSlider = document.getElementById('webext-line-width');
+        const widthVal = document.getElementById('webext-draw-size-value');
+        const opacitySlider = document.getElementById('webext-stroke-opacity');
+        const opacityVal = document.getElementById('webext-draw-opacity-value');
+        if (widthSlider) { widthSlider.value = this.lineWidth; }
+        if (widthVal) { widthVal.textContent = this.lineWidth; }
+        if (opacitySlider) { opacitySlider.value = Math.round(this.strokeOpacity * 100); }
+        if (opacityVal) { opacityVal.textContent = Math.round(this.strokeOpacity * 100) + '%'; }
+        this.updateOpacityTrack();
+    }
+
+    applyToolbarOrder() {
+        if (!this.settings.toolbarOrder) return;
+        const content = this.uiElement?.querySelector('.webext-draw-toolbar-content');
+        if (!content) return;
+        const buttons = Array.from(content.querySelectorAll('.webext-draw-tool-btn'));
+        const order = this.settings.toolbarOrder;
+        const sorted = [];
+        order.forEach(tool => {
+            const btn = buttons.find(b => b.dataset.tool === tool || b.dataset.shape === tool);
+            if (btn) sorted.push(btn);
+        });
+        // Add any buttons not in order list
+        buttons.forEach(b => { if (!sorted.includes(b)) sorted.push(b); });
+        sorted.forEach(b => content.appendChild(b));
+    }
+
+    applyHiddenTools() {
+        const hidden = this.settings.hiddenTools || [];
+        this.uiElement?.querySelectorAll('.webext-draw-tool-btn').forEach(btn => {
+            const tool = btn.dataset.tool;
+            if (hidden.includes(tool)) {
+                btn.style.display = 'none';
+            } else {
+                btn.style.display = '';
+            }
+        });
+    }
+
+    getToolLabel(tool) {
+        const vi = {
+            cursor: 'Con trỏ', pen: 'Bút vẽ', text: 'Chữ', shapes: 'Hình dạng',
+            move: 'Di chuyển', eraser: 'Tẩy', undo: 'Hoàn tác', redo: 'Làm lại',
+            color: 'Màu sắc', picker: 'Lấy màu', clearall: 'Xóa tất cả',
+            screenshot: 'Chụp màn hình', duplicate: 'Nhân đôi', ruler: 'Thước đo',
+            stepmarker: 'Đánh số', blur: 'Làm mờ', spotlight: 'Spotlight',
+            'toggle-visibility': 'Ẩn/hiện', 'pin-left': 'Ghim trái',
+            'pin-right': 'Ghim phải', settings: 'Cài đặt'
+        };
+        const en = {
+            cursor: 'Cursor', pen: 'Pen', text: 'Text', shapes: 'Shapes',
+            move: 'Move', eraser: 'Eraser', undo: 'Undo', redo: 'Redo',
+            color: 'Color', picker: 'Pick Color', clearall: 'Clear All',
+            screenshot: 'Screenshot', duplicate: 'Duplicate', ruler: 'Ruler',
+            stepmarker: 'Step Marker', blur: 'Blur', spotlight: 'Spotlight',
+            'toggle-visibility': 'Show/Hide', 'pin-left': 'Pin Left',
+            'pin-right': 'Pin Right', settings: 'Settings'
+        };
+        const labels = this.settings.lang === 'en' ? en : vi;
+        return labels[tool] || tool;
+    }
+
+    openSettings() {
+        const existing = document.getElementById('webext-settings-modal');
+        if (existing) { existing.remove(); return; }
+
+        const s = this.settings;
+        const isVi = s.lang === 'vi';
+        const t = (vi, en) => isVi ? vi : en;
+
+        const overlay = document.createElement('div');
+        overlay.id = 'webext-settings-modal';
+        overlay.style.cssText = `
+            position: fixed; inset: 0; z-index: 2147483647;
+            background: rgba(0,0,0,0.08); display: flex;
+            align-items: center; justify-content: center;
+        `;
+
+        const modal = document.createElement('div');
+        modal.className = 'ws-modal';
+        modal.style.cssText = `
+            width: 500px; max-width: 92vw; height: 540px; max-height: 85vh;
+        `;
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'ws-header';
+        header.innerHTML = `<h3>${t('Cài đặt', 'Settings')}</h3>`;
+        const closeX = document.createElement('button');
+        closeX.className = 'ws-close-x';
+        closeX.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+        closeX.addEventListener('click', () => overlay.remove());
+        header.appendChild(closeX);
+
+        // Inject scoped styles
+        const styleId = 'ws-modal-styles';
+        if (!document.getElementById(styleId)) {
+            const style = document.createElement('style');
+            style.id = styleId;
+            style.textContent = `
+                #webext-settings-modal * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+                .ws-modal { background: #ffffff; border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 24px 80px rgba(60,70,110,0.25), 0 0 0 1px rgba(255,255,255,0.6) inset; }
+                .ws-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; background: white; border-bottom: 1px solid #e8eaf0; }
+                .ws-header h3 { margin: 0; font-size: 15px; font-weight: 700; color: #2d3250; }
+                .ws-close-x { background: none; border: none; cursor: pointer; padding: 6px; border-radius: 8px; display: flex; color: #aab; transition: all 0.15s; }
+                .ws-close-x:hover { background: #f0f0f5; color: #666; }
+
+                .ws-section { margin-bottom: 16px; }
+                .ws-section-title { font-size: 10px; font-weight: 700; color: #8b90a5; margin: 0 0 6px 2px; text-transform: uppercase; letter-spacing: 1.2px; }
+                .ws-card { background: white; border-radius: 14px; padding: 4px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+                .ws-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 16px; position: relative; }
+                .ws-row + .ws-row { border-top: 1px solid #f2f3f7; }
+                .ws-label { font-size: 13px; color: #2d3250; font-weight: 500; }
+
+                /* Custom Select — pill style */
+                .ws-select { appearance: none; -webkit-appearance: none; padding: 6px 30px 6px 12px; border: 1.5px solid #e2e5ee; border-radius: 10px; font-size: 12px; font-weight: 600; background: #f8f9fc url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%237b80a0' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 10px center; outline: none; cursor: pointer; color: #3d4270; min-width: 105px; transition: all 0.2s; }
+                .ws-select:focus { border-color: #6c7bf7; box-shadow: 0 0 0 3px rgba(108,123,247,0.12); }
+                .ws-select:hover { border-color: #c0c5da; }
+
+                /* Custom Range — rounded thick */
+                .ws-range { -webkit-appearance: none; appearance: none; width: 110px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, #e2e5ee 0%, #d0d4e4 100%); outline: none; cursor: pointer; }
+                .ws-range::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: linear-gradient(135deg, #6c7bf7 0%, #5a67e8 100%); cursor: pointer; border: 2.5px solid white; box-shadow: 0 2px 6px rgba(90,103,232,0.35); transition: transform 0.15s, box-shadow 0.15s; }
+                .ws-range::-webkit-slider-thumb:hover { transform: scale(1.15); box-shadow: 0 3px 10px rgba(90,103,232,0.4); }
+                .ws-range::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: linear-gradient(135deg, #6c7bf7 0%, #5a67e8 100%); cursor: pointer; border: 2.5px solid white; box-shadow: 0 2px 6px rgba(90,103,232,0.35); }
+                .ws-range-val { min-width: 34px; text-align: center; font-weight: 700; font-size: 11px; color: #5a67e8; background: #eef0ff; padding: 3px 8px; border-radius: 6px; }
+
+                /* Custom Color */
+                .ws-color-wrap { display: flex; align-items: center; gap: 8px; }
+                .ws-color-input { width: 32px; height: 32px; border: none; border-radius: 10px; cursor: pointer; padding: 0; background: none; overflow: hidden; }
+                .ws-color-input::-webkit-color-swatch-wrapper { padding: 0; }
+                .ws-color-input::-webkit-color-swatch { border: 2px solid #e2e5ee; border-radius: 10px; }
+                .ws-color-hex { font-size: 11px; font-family: 'SF Mono', 'Fira Code', monospace; color: #8b90a5; font-weight: 600; }
+
+                /* Custom Switch — compact iOS style */
+                .ws-switch { position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; }
+                .ws-switch input { display: none; }
+                .ws-switch-track { position: absolute; inset: 0; background: #d5d8e4; border-radius: 20px; cursor: pointer; transition: background 0.3s cubic-bezier(.4,0,.2,1); }
+                .ws-switch-thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: white; border-radius: 50%; transition: transform 0.3s cubic-bezier(.4,0,.2,1); box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+                .ws-switch input:checked ~ .ws-switch-track { background: linear-gradient(135deg, #6c7bf7 0%, #5a67e8 100%); }
+                .ws-switch input:checked ~ .ws-switch-thumb { transform: translateX(16px); }
+
+                /* Footer */
+                .ws-footer { padding: 14px 22px; background: white; border-top: 1px solid #f0f1f5; display: flex; justify-content: flex-end; gap: 10px; }
+                .ws-btn { border: none; border-radius: 8px; padding: 8px 18px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; letter-spacing: 0.2px; }
+                .ws-btn-primary { background: #5a67e8; color: white; }
+                .ws-btn-primary:hover { background: #4a56d6; }
+                .ws-btn-secondary { background: none; color: #8b90a5; }
+                .ws-btn-secondary:hover { color: #5a67e8; background: #f0f1ff; }
+
+                /* Thin scrollbar */
+                .ws-modal-body::-webkit-scrollbar { width: 4px; }
+                .ws-modal-body::-webkit-scrollbar-track { background: transparent; }
+                .ws-modal-body::-webkit-scrollbar-thumb { background: rgba(100,110,160,0.15); border-radius: 4px; }
+
+                /* Toolbar list items */
+                .ws-tool-item:hover { background: #f8f9fc !important; }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // Body
+        const body = document.createElement('div');
+        body.className = 'ws-modal-body';
+        body.style.cssText = 'padding:20px 24px;flex:1;overflow-y:auto;font-size:13px;color:#333;scrollbar-width:thin;scrollbar-color:rgba(0,0,0,0.15) transparent;';
+
+        const switchHtml = (id, checked) => `
+            <label class="ws-switch">
+                <input type="checkbox" id="${id}" ${checked ? 'checked' : ''}>
+                <span class="ws-switch-track"></span>
+                <span class="ws-switch-thumb"></span>
+            </label>`;
+
+        body.innerHTML = `
+            <div class="ws-section">
+                <div class="ws-section-title">${t('Giao diện', 'Interface')}</div>
+                <div class="ws-card">
+                    <div class="ws-row">
+                        <span class="ws-label">${t('Ngôn ngữ', 'Language')}</span>
+                        <select id="ws-lang" class="ws-select">
+                            <option value="vi" ${s.lang === 'vi' ? 'selected' : ''}>Tiếng Việt</option>
+                            <option value="en" ${s.lang === 'en' ? 'selected' : ''}>English</option>
+                        </select>
+                    </div>
+                    <div class="ws-row">
+                        <span class="ws-label">${t('Vị trí toolbar', 'Toolbar position')}</span>
+                        <select id="ws-position" class="ws-select">
+                            <option value="bottom" ${s.defaultPosition === 'bottom' ? 'selected' : ''}>${t('Dưới', 'Bottom')}</option>
+                            <option value="left" ${s.defaultPosition === 'left' ? 'selected' : ''}>${t('Trái', 'Left')}</option>
+                            <option value="right" ${s.defaultPosition === 'right' ? 'selected' : ''}>${t('Phải', 'Right')}</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="ws-section">
+                <div class="ws-section-title">${t('Nét vẽ mặc định', 'Default Stroke')}</div>
+                <div class="ws-card">
+                    <div class="ws-row">
+                        <span class="ws-label">${t('Màu', 'Color')}</span>
+                        <div class="ws-color-wrap">
+                            <span class="ws-color-hex" id="ws-color-hex">${s.defaultColor}</span>
+                            <input type="color" id="ws-color" value="${s.defaultColor}" class="ws-color-input">
+                        </div>
+                    </div>
+                    <div class="ws-row">
+                        <span class="ws-label">${t('Độ dày', 'Width')}</span>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <input type="range" id="ws-width" min="1" max="50" value="${s.defaultStrokeWidth}" class="ws-range">
+                            <span id="ws-width-val" class="ws-range-val">${s.defaultStrokeWidth}</span>
+                        </div>
+                    </div>
+                    <div class="ws-row">
+                        <span class="ws-label">${t('Độ mờ', 'Opacity')}</span>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <input type="range" id="ws-opacity" min="1" max="100" value="${Math.round(s.defaultOpacity * 100)}" class="ws-range">
+                            <span id="ws-opacity-val" class="ws-range-val">${Math.round(s.defaultOpacity * 100)}%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="ws-section">
+                <div class="ws-section-title">${t('Hành vi', 'Behavior')}</div>
+                <div class="ws-card">
+                    <div class="ws-row">
+                        <span class="ws-label">${t('Tự bật con trỏ khi mở', 'Auto cursor on open')}</span>
+                        ${switchHtml('ws-autocursor', s.autoCursor)}
+                    </div>
+                    <div class="ws-row">
+                        <span class="ws-label">${t('Lưu bản vẽ theo trang', 'Save drawings per page')}</span>
+                        ${switchHtml('ws-savedrawings', s.saveDrawings)}
+                    </div>
+                </div>
+            </div>
+            <div class="ws-section">
+                <div class="ws-section-title">${t('Chụp màn hình', 'Screenshot')}</div>
+                <div class="ws-card">
+                    <div class="ws-row">
+                        <span class="ws-label">${t('Định dạng', 'Format')}</span>
+                        <select id="ws-format" class="ws-select">
+                            <option value="png" ${s.screenshotFormat === 'png' ? 'selected' : ''}>PNG</option>
+                            <option value="jpeg" ${s.screenshotFormat === 'jpeg' ? 'selected' : ''}>JPG</option>
+                        </select>
+                    </div>
+                    <div class="ws-row">
+                        <span class="ws-label">${t('Chất lượng', 'Quality')}</span>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <input type="range" id="ws-quality" min="10" max="100" value="${Math.round(s.screenshotQuality * 100)}" class="ws-range">
+                            <span id="ws-quality-val" class="ws-range-val">${Math.round(s.screenshotQuality * 100)}%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="ws-section">
+                <div class="ws-section-title">${t('Thanh công cụ', 'Toolbar')}</div>
+                <div class="ws-card" style="padding:0;">
+                    <div id="ws-toolbar-list"></div>
+                </div>
+            </div>
+        `;
+
+        // Footer
+        const footer = document.createElement('div');
+        footer.className = 'ws-footer';
+
+        const resetBtn = document.createElement('button');
+        resetBtn.textContent = t('Đặt lại', 'Reset');
+        resetBtn.className = 'ws-btn ws-btn-secondary';
+        resetBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            localStorage.removeItem('webext-draw-settings');
+            localStorage.removeItem('webext-draw-pinned');
+            this.settings = this.loadSettings();
+            this.applySettings();
+            overlay.remove();
+            setTimeout(() => this.openSettings(), 50);
+        });
+
+        const saveBtn = document.createElement('button');
+        saveBtn.textContent = t('Lưu cài đặt', 'Save Settings');
+        saveBtn.className = 'ws-btn ws-btn-primary';
+        saveBtn.addEventListener('click', () => {
+            this.settings.lang = body.querySelector('#ws-lang').value;
+            this.settings.defaultPosition = body.querySelector('#ws-position').value;
+            this.settings.defaultColor = body.querySelector('#ws-color').value;
+            this.settings.defaultStrokeWidth = parseInt(body.querySelector('#ws-width').value);
+            this.settings.defaultOpacity = parseInt(body.querySelector('#ws-opacity').value) / 100;
+            this.settings.autoCursor = body.querySelector('#ws-autocursor').checked;
+            this.settings.saveDrawings = body.querySelector('#ws-savedrawings').checked;
+            this.settings.screenshotFormat = body.querySelector('#ws-format').value;
+            this.settings.screenshotQuality = parseInt(body.querySelector('#ws-quality').value) / 100;
+            const listItems = body.querySelectorAll('#ws-toolbar-list .ws-tool-item');
+            this.settings.toolbarOrder = Array.from(listItems).map(li => li.dataset.tool);
+            this.settings.hiddenTools = Array.from(listItems)
+                .filter(li => !li.querySelector('input[type=checkbox]').checked)
+                .map(li => li.dataset.tool);
+            this.saveSettings();
+            this.applySettings();
+            overlay.remove();
+        });
+
+        footer.append(resetBtn, saveBtn);
+        modal.append(header, body, footer);
+        overlay.appendChild(modal);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+        document.body.appendChild(overlay);
+
+        // Populate toolbar list
+        this.populateToolbarList(body.querySelector('#ws-toolbar-list'));
+
+        // Live updates
+        body.querySelector('#ws-width').addEventListener('input', (e) => {
+            body.querySelector('#ws-width-val').textContent = e.target.value;
+        });
+        body.querySelector('#ws-opacity').addEventListener('input', (e) => {
+            body.querySelector('#ws-opacity-val').textContent = e.target.value + '%';
+        });
+        body.querySelector('#ws-quality').addEventListener('input', (e) => {
+            body.querySelector('#ws-quality-val').textContent = e.target.value + '%';
+        });
+        body.querySelector('#ws-color').addEventListener('input', (e) => {
+            body.querySelector('#ws-color-hex').textContent = e.target.value.toUpperCase();
+        });
+    }
+
+    populateToolbarList(container) {
+        const content = this.uiElement?.querySelector('.webext-draw-toolbar-content');
+        if (!content) return;
+
+        const allButtons = Array.from(content.querySelectorAll('.webext-draw-tool-btn'));
+        const tools = allButtons.map(b => b.dataset.tool).filter(Boolean);
+
+        // Use saved order or current order
+        const order = this.settings.toolbarOrder || tools;
+        const hidden = this.settings.hiddenTools || [];
+
+        // Add tools not in order (newly added)
+        tools.forEach(t => { if (!order.includes(t)) order.push(t); });
+
+        let dragItem = null;
+
+        order.forEach(tool => {
+            if (!tools.includes(tool)) return; // skip removed tools
+
+            const item = document.createElement('div');
+            item.className = 'ws-tool-item';
+            item.dataset.tool = tool;
+            item.draggable = true;
+            item.style.cssText = `
+                display:flex;align-items:center;gap:10px;padding:8px 14px;
+                background:white;border-bottom:1px solid #f5f5f5;cursor:grab;
+                font-size:13px;user-select:none;transition:background 0.15s;
+            `;
+            item.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#bbb" stroke="none" style="flex-shrink:0;cursor:grab;">
+                    <circle cx="8" cy="6" r="2"/><circle cx="16" cy="6" r="2"/>
+                    <circle cx="8" cy="12" r="2"/><circle cx="16" cy="12" r="2"/>
+                    <circle cx="8" cy="18" r="2"/><circle cx="16" cy="18" r="2"/>
+                </svg>
+                <span style="flex:1;font-weight:500;">${this.getToolLabel(tool)}</span>
+                <label class="ws-switch" style="transform:scale(0.85);">
+                    <input type="checkbox" ${hidden.includes(tool) ? '' : 'checked'}>
+                    <span class="ws-switch-track"></span>
+                    <span class="ws-switch-thumb"></span>
+                </label>
+            `;
+
+            // Drag events
+            item.addEventListener('dragstart', (e) => {
+                dragItem = item;
+                item.style.opacity = '0.4';
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            item.addEventListener('dragend', () => {
+                item.style.opacity = '1';
+                dragItem = null;
+                container.querySelectorAll('.ws-tool-item').forEach(i => i.style.borderTop = '');
+            });
+            item.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                item.style.borderTop = '2px solid #007bff';
+            });
+            item.addEventListener('dragleave', () => {
+                item.style.borderTop = '';
+            });
+            item.addEventListener('drop', (e) => {
+                e.preventDefault();
+                item.style.borderTop = '';
+                if (dragItem && dragItem !== item) {
+                    container.insertBefore(dragItem, item);
+                }
+            });
+
+            container.appendChild(item);
+        });
+    }
+
     toggleDrawingsVisibility() {
         this.drawingsVisible = !this.drawingsVisible;
         this.canvas.style.opacity = this.drawingsVisible ? '1' : '0';
@@ -2774,20 +3232,6 @@ class WebDrawingExtension {
         }
     }
 
-    // === Toggle visibility ===
-    toggleDrawingsVisibility() {
-        this.drawingsVisible = !this.drawingsVisible;
-        const btn = document.querySelector('[data-tool="toggle-visibility"]');
-        if (this.drawingsVisible) {
-            this.canvas.style.opacity = '1';
-            this.svgOverlay.style.opacity = '1';
-            btn?.classList.remove('active');
-        } else {
-            this.canvas.style.opacity = '0';
-            this.svgOverlay.style.opacity = '0';
-            btn?.classList.add('active');
-        }
-    }
 
     // === Duplicate selected shape ===
     duplicateSelected() {

@@ -50,12 +50,18 @@
     border-right: none !important;
     padding-top: 16px !important;
     padding-bottom: 16px !important;
+    overflow: hidden !important;
 }
 
 #webext-draw-ui.pinned .webext-draw-toolbar-content {
     flex: 1 !important;
     flex-direction: column !important;
     justify-content: flex-start !important;
+    overflow-y: auto !important;
+    scrollbar-width: none !important;
+}
+#webext-draw-ui.pinned .webext-draw-toolbar-content::-webkit-scrollbar {
+    display: none !important;
 }
 
 #webext-draw-ui.pinned .webext-drag-handle {
@@ -90,6 +96,11 @@
     flex: 1 !important;
     flex-direction: column !important;
     justify-content: flex-start !important;
+    overflow-y: auto !important;
+    scrollbar-width: none !important;
+}
+#webext-draw-ui.pinned-left .webext-draw-toolbar-content::-webkit-scrollbar {
+    display: none !important;
 }
 
 #webext-draw-ui.pinned-left .webext-drag-handle {
