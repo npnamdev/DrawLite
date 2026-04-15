@@ -194,7 +194,7 @@ class WebDrawingExtension {
         const btn = document.querySelector('[data-tool="pin-cycle"]');
         if (btn) {
             const labels = { none: 'Ghim trái', left: 'Ghim phải', right: 'Bỏ ghim' };
-            btn.title = labels[this.pinState] || 'Ghim thanh công cụ';
+            btn.setAttribute('data-tooltip', labels[this.pinState] || 'Ghim thanh công cụ');
         }
     }
 
@@ -706,6 +706,58 @@ class WebDrawingExtension {
 
     }
 
+    setupTooltips() {
+        // Create shared tooltip element outside overflow containers
+        let tooltip = document.getElementById('webext-draw-tooltip');
+        if (!tooltip) {
+            tooltip = document.createElement('div');
+            tooltip.id = 'webext-draw-tooltip';
+            tooltip.className = 'webext-draw-tooltip';
+            tooltip.style.display = 'none';
+            document.body.appendChild(tooltip);
+        }
+        this.tooltipEl = tooltip;
+
+        const showTooltip = (btn) => {
+            const title = btn.getAttribute('data-tooltip');
+            if (!title) return;
+            this.tooltipEl.textContent = title;
+            this.tooltipEl.style.display = 'block';
+
+            const btnRect = btn.getBoundingClientRect();
+            const tipRect = this.tooltipEl.getBoundingClientRect();
+
+            if (this.pinState === 'right') {
+                // Show to the left of the button
+                this.tooltipEl.style.left = (btnRect.left - tipRect.width - 8) + 'px';
+                this.tooltipEl.style.top = (btnRect.top + btnRect.height / 2 - tipRect.height / 2) + 'px';
+            } else if (this.pinState === 'left') {
+                // Show to the right of the button
+                this.tooltipEl.style.left = (btnRect.right + 8) + 'px';
+                this.tooltipEl.style.top = (btnRect.top + btnRect.height / 2 - tipRect.height / 2) + 'px';
+            } else {
+                // Floating: show above the button
+                this.tooltipEl.style.left = (btnRect.left + btnRect.width / 2 - tipRect.width / 2) + 'px';
+                this.tooltipEl.style.top = (btnRect.top - tipRect.height - 8) + 'px';
+            }
+        };
+
+        const hideTooltip = () => {
+            this.tooltipEl.style.display = 'none';
+        };
+
+        // Convert title → data-tooltip to prevent native browser tooltip
+        const allBtns = this.uiElement.querySelectorAll('.webext-draw-tool-btn[title], .webext-draw-close-btn[title]');
+        allBtns.forEach(btn => {
+            if (btn.title && !btn.getAttribute('data-tooltip')) {
+                btn.setAttribute('data-tooltip', btn.title);
+                btn.removeAttribute('title');
+            }
+            btn.addEventListener('mouseenter', () => showTooltip(btn));
+            btn.addEventListener('mouseleave', hideTooltip);
+        });
+    }
+
     setupEventListeners() {
         const lineWidthSlider = document.getElementById('webext-line-width');
         const sizeValue = document.getElementById('webext-draw-size-value');
@@ -717,6 +769,9 @@ class WebDrawingExtension {
 
         // Setup color picker
         this.setupColorPicker();
+
+        // Setup tooltips (JS-based to avoid overflow clipping issues)
+        this.setupTooltips();
 
         closeBtn.addEventListener('click', () => this.hideExtension());
 
@@ -1510,22 +1565,23 @@ class WebDrawingExtension {
             this.ctx.strokeRect(bx, by, bw, bh);
             this.ctx.setLineDash([]);
         } else if (this.drawingMode === 'spotlight' && this.isDrawing) {
-            this.redrawAllShapes();
+            // Temporarily add the in-progress spotlight to render combined overlay
             const sx = Math.min(this.shapeStartX, e.clientX);
             const sy = Math.min(this.shapeStartY, e.clientY);
             const sw = Math.abs(e.clientX - this.shapeStartX);
             const sh = Math.abs(e.clientY - this.shapeStartY);
-            const cw = this.canvas.width / (window.devicePixelRatio || 1);
-            const ch = this.canvas.height / (window.devicePixelRatio || 1);
             this.lastX = e.clientX;
             this.lastY = e.clientY;
-            // Dark overlay with cutout
-            this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
-            this.ctx.fillRect(0, 0, cw, ch);
-            this.ctx.clearRect(sx, sy, sw, sh);
+            const previewSpotlight = { type: 'spotlight', x: sx, y: sy, width: sw, height: sh, opacity: 1 };
+            this.shapes.push(previewSpotlight);
+            this.redrawAllShapes();
+            this.shapes.pop();
+            // Draw border for the in-progress spotlight
             this.ctx.strokeStyle = '#fff';
             this.ctx.lineWidth = 2;
+            this.ctx.setLineDash([6, 4]);
             this.ctx.strokeRect(sx, sy, sw, sh);
+            this.ctx.setLineDash([]);
         } else {
             this.drawShape(e.clientX, e.clientY);
         }
@@ -3436,6 +3492,34 @@ class WebDrawingExtension {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         this.removeAllBlurDivs();
 
+        // Draw single spotlight overlay for all spotlight shapes
+        const spotlightShapes = this.shapes.filter(s => s.type === 'spotlight');
+        if (spotlightShapes.length > 0) {
+            const cw = this.canvas.width / (window.devicePixelRatio || 1);
+            const ch = this.canvas.height / (window.devicePixelRatio || 1);
+            this.ctx.save();
+            this.ctx.beginPath();
+            // Full canvas rectangle (clockwise)
+            this.ctx.rect(0, 0, cw, ch);
+            // Cut out each spotlight region (counter-clockwise)
+            spotlightShapes.forEach(s => {
+                this.ctx.moveTo(s.x, s.y);
+                this.ctx.lineTo(s.x, s.y + s.height);
+                this.ctx.lineTo(s.x + s.width, s.y + s.height);
+                this.ctx.lineTo(s.x + s.width, s.y);
+                this.ctx.closePath();
+            });
+            this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            this.ctx.fill('evenodd');
+            // Draw borders for each spotlight
+            spotlightShapes.forEach(s => {
+                this.ctx.strokeStyle = '#fff';
+                this.ctx.lineWidth = 2;
+                this.ctx.strokeRect(s.x, s.y, s.width, s.height);
+            });
+            this.ctx.restore();
+        }
+
         // Redraw all shapes
         this.shapes.forEach(shape => {
             this.ctx.globalAlpha = shape.opacity != null ? shape.opacity : 1;
@@ -3639,22 +3723,8 @@ class WebDrawingExtension {
                     pointer-events: none; border-radius: 2px;
                 `;
             } else if (shape.type === 'spotlight') {
-                // Dark overlay with cutout
-                const cw = this.canvas.width / (window.devicePixelRatio || 1);
-                const ch = this.canvas.height / (window.devicePixelRatio || 1);
-                this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
-                // Top
-                this.ctx.fillRect(0, 0, cw, shape.y);
-                // Bottom
-                this.ctx.fillRect(0, shape.y + shape.height, cw, ch - shape.y - shape.height);
-                // Left
-                this.ctx.fillRect(0, shape.y, shape.x, shape.height);
-                // Right
-                this.ctx.fillRect(shape.x + shape.width, shape.y, cw - shape.x - shape.width, shape.height);
-                // Border
-                this.ctx.strokeStyle = '#fff';
-                this.ctx.lineWidth = 2;
-                this.ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
+                // Spotlight overlay + borders are drawn once before this loop
+                // (see spotlightShapes block above) — skip here
             }
             this.ctx.globalAlpha = 1;
         });
