@@ -574,7 +574,7 @@
 
 .webext-moretools-grid {
     display: grid;
-    grid-template-columns: repeat(3, 32px);
+    grid-template-columns: repeat(4, 32px);
     gap: 4px;
 }
 

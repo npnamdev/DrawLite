@@ -658,6 +658,7 @@ class WebDrawingExtension {
             { id: 'note', label: 'Ghi chú', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="13" y2="12"/></svg>' },
             { id: 'crop', label: 'Cắt & Sao chép', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v4"/><path d="M6 18v4"/><path d="M6 6h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6"/><path d="M2 6h4"/><path d="M18 6h4"/></svg>' },
             { id: 'numarrow', label: 'Mũi tên số', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="15 8 19 12 15 16"/><circle cx="5" cy="12" r="4" fill="currentColor" opacity="0.15"/><text x="5" y="15" text-anchor="middle" fill="currentColor" stroke="none" font-size="8" font-weight="bold">1</text></svg>' },
+            { id: 'record', label: 'Quay màn hình', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4" fill="currentColor" opacity="0.8" stroke="none"/></svg>' },
         ];
 
         moretoolsDefs.forEach(def => {
@@ -972,6 +973,11 @@ class WebDrawingExtension {
                     const btn = document.querySelector('.webext-draw-tool-btn[data-tool="moretools"]');
                     this.closeAllPopups();
                     this.togglePopup('screenshot', btn);
+                    return;
+                }
+                if (selectedTool === 'record') {
+                    this.closeAllPopups();
+                    this.showRecordBar();
                     return;
                 }
 
@@ -4516,57 +4522,55 @@ class WebDrawingExtension {
         this.canvas.style.cursor = 'crosshair';
     }
 
-    async cropAndCopy(x, y, w, h) {
-        // Hide toolbar and drawing overlays before capture
+    cropAndCopy(x, y, w, h) {
+        // Hide UI, capture, restore — use setTimeout to let DOM update before capture
         const toolbar = document.querySelector('.webext-draw-toolbar');
         const origToolbar = toolbar ? toolbar.style.display : '';
         if (toolbar) toolbar.style.display = 'none';
         this.canvas.style.display = 'none';
         this.svgOverlay.style.display = 'none';
 
-        try {
-            const response = await chrome.runtime.sendMessage({ action: 'captureScreenshot' });
+        // Small delay to let browser render without our overlays
+        setTimeout(() => {
+            chrome.runtime.sendMessage({ action: 'captureScreenshot' }, (response) => {
+                // Restore UI immediately
+                if (toolbar) toolbar.style.display = origToolbar;
+                this.canvas.style.display = '';
+                this.svgOverlay.style.display = '';
+                this.redrawAllShapes();
 
-            // Restore UI
-            if (toolbar) toolbar.style.display = origToolbar;
-            this.canvas.style.display = '';
-            this.svgOverlay.style.display = '';
+                if (response && response.dataUrl) {
+                    const img = new Image();
+                    img.onload = () => {
+                        const dpr = window.devicePixelRatio || 1;
+                        const cropCanvas = document.createElement('canvas');
+                        cropCanvas.width = w * dpr;
+                        cropCanvas.height = h * dpr;
+                        const cropCtx = cropCanvas.getContext('2d');
+                        cropCtx.drawImage(img, x * dpr, y * dpr, w * dpr, h * dpr, 0, 0, w * dpr, h * dpr);
 
-            if (response && response.dataUrl) {
-                const img = new Image();
-                img.onload = () => {
-                    const dpr = window.devicePixelRatio || 1;
-                    const cropCanvas = document.createElement('canvas');
-                    cropCanvas.width = w * dpr;
-                    cropCanvas.height = h * dpr;
-                    const cropCtx = cropCanvas.getContext('2d');
-                    cropCtx.drawImage(img, x * dpr, y * dpr, w * dpr, h * dpr, 0, 0, w * dpr, h * dpr);
-
-                    cropCanvas.toBlob((blob) => {
-                        if (blob) {
-                            navigator.clipboard.write([
-                                new ClipboardItem({ 'image/png': blob })
-                            ]).then(() => {
-                                this.showCropFeedback(x, y, w, h);
-                            }).catch(() => {
-                                // Fallback: download
-                                const url = cropCanvas.toDataURL('image/png');
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = `crop-${Date.now()}.png`;
-                                a.click();
-                            });
-                        }
-                    }, 'image/png');
-                };
-                img.src = response.dataUrl;
-            }
-        } catch (err) {
-            // Restore UI on error
-            if (toolbar) toolbar.style.display = origToolbar;
-            this.canvas.style.display = '';
-            this.svgOverlay.style.display = '';
-        }
+                        cropCanvas.toBlob((blob) => {
+                            if (blob) {
+                                navigator.clipboard.write([
+                                    new ClipboardItem({ 'image/png': blob })
+                                ]).then(() => {
+                                    this.showCropFeedback(x, y, w, h);
+                                }).catch(() => {
+                                    // Fallback: download
+                                    const url = cropCanvas.toDataURL('image/png');
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = `crop-${Date.now()}.png`;
+                                    a.click();
+                                    this.showCropFeedback(x, y, w, h);
+                                });
+                            }
+                        }, 'image/png');
+                    };
+                    img.src = response.dataUrl;
+                }
+            });
+        }, 50);
     }
 
     showCropFeedback(x, y, w, h) {
@@ -4582,6 +4586,570 @@ class WebDrawingExtension {
         document.body.appendChild(feedback);
         setTimeout(() => { feedback.style.opacity = '0'; feedback.style.transition = 'opacity 0.3s'; }, 800);
         setTimeout(() => feedback.remove(), 1100);
+    }
+
+    // ===== Screen Recording =====
+
+    showRecordBar() {
+        this.removeRecordingUI();
+        this.uiElement.style.display = 'none';
+        this.canvas.style.display = 'none';
+        this.svgOverlay.style.display = 'none';
+
+        if (!document.getElementById('webext-rec-styles')) {
+            const style = document.createElement('style');
+            style.id = 'webext-rec-styles';
+            style.textContent = `
+                @keyframes webext-pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+                .webext-player-wrap:fullscreen { display:flex; align-items:center; justify-content:center; background:#000; }
+                .webext-player-wrap:fullscreen video { max-width:100vw!important; max-height:100vh!important; width:100vw; height:100vh; object-fit:contain; }
+            `;
+            document.head.appendChild(style);
+        }
+
+        const ui = document.createElement('div');
+        ui.id = 'webext-recording-ui';
+        ui.style.cssText = `
+            position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+            z-index:2147483647; display:flex; align-items:center; gap:6px;
+            background:#f0f0f0; color:#333; padding:6px 10px; border-radius:15px;
+            box-shadow:0 2px 8px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.04);
+            font-family:-apple-system,sans-serif; font-size:12px; font-weight:600;
+            cursor:move; user-select:none;
+        `;
+
+        const btnStyle = `border:none; background:none; cursor:pointer; padding:4px; display:flex;
+            align-items:center; justify-content:center; color:#666; transition:color 0.15s; flex-shrink:0;`;
+
+        // Drag handle — same size as toolbar drag dots
+        const drag = document.createElement('div');
+        drag.style.cssText = 'display:flex; align-items:center; padding:0 6px 0 2px; color:#aaa; cursor:move;';
+        drag.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="8" cy="5" r="2"/><circle cx="16" cy="5" r="2"/><circle cx="8" cy="10" r="2"/><circle cx="16" cy="10" r="2"/><circle cx="8" cy="15" r="2"/><circle cx="16" cy="15" r="2"/><circle cx="8" cy="20" r="2"/><circle cx="16" cy="20" r="2"/></svg>';
+
+        // Record/Stop button
+        const recBtn = document.createElement('button');
+        recBtn.id = 'webext-rec-btn';
+        recBtn.style.cssText = `
+            width:32px; height:32px; border-radius:9px; border:none;
+            background:white; cursor:pointer; display:flex; align-items:center;
+            justify-content:center; transition:all 0.15s; flex-shrink:0; padding:0;
+        `;
+        recBtn.onmouseenter = () => recBtn.style.background = '#e8e8e8';
+        recBtn.onmouseleave = () => recBtn.style.background = 'white';
+        const recDot = document.createElement('span');
+        recDot.id = 'webext-rec-dot';
+        recDot.style.cssText = 'width:13px; height:13px; border-radius:50%; background:#ff3b30; transition:all 0.2s;';
+        recBtn.appendChild(recDot);
+
+        // Timer
+        const timer = document.createElement('span');
+        timer.id = 'webext-rec-timer';
+        timer.textContent = '00:00';
+        timer.style.cssText = 'font-variant-numeric:tabular-nums; min-width:42px; color:#333; font-size:13px;';
+
+        // Close button
+        const closeBtn = document.createElement('button');
+        closeBtn.id = 'webext-rec-close';
+        closeBtn.style.cssText = btnStyle;
+        closeBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+        closeBtn.onmouseenter = () => closeBtn.style.color = '#333';
+        closeBtn.onmouseleave = () => closeBtn.style.color = '#666';
+
+        // Mic toggle button — default ON
+        const micBtn = document.createElement('button');
+        micBtn.id = 'webext-rec-mic';
+        this.recMicEnabled = true;
+        micBtn.style.cssText = btnStyle;
+        micBtn.style.color = '#333';
+        micBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
+        micBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.recMicEnabled = !this.recMicEnabled;
+            if (this.recMicEnabled) {
+                micBtn.style.color = '#333';
+                micBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
+            } else {
+                micBtn.style.color = '#ff3b30';
+                micBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.13 1.49-.35 2.17"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
+            }
+            // Toggle mic on active stream if recording
+            if (this.micStream) {
+                this.micStream.getAudioTracks().forEach(t => { t.enabled = this.recMicEnabled; });
+            }
+        });
+
+        ui.append(drag, recBtn, timer, micBtn, closeBtn);
+        document.body.appendChild(ui);
+
+        // Record/Stop toggle
+        recBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (this.isRecording) this.stopRecording();
+            else this.beginCapture();
+        });
+
+        // Close — only when NOT recording
+        closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (this.isRecording) return;
+            this.removeRecordingUI();
+            this.uiElement.style.display = '';
+            this.canvas.style.display = '';
+            this.svgOverlay.style.display = '';
+        });
+
+        // Draggable
+        let isDrag = false, sx, sy, ix, iy;
+        ui.addEventListener('mousedown', (e) => {
+            if (e.target.closest('button')) return;
+            isDrag = true; const r = ui.getBoundingClientRect();
+            sx = e.clientX; sy = e.clientY; ix = r.left; iy = r.top; ui.style.transition = 'none';
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (!isDrag) return;
+            ui.style.left = Math.max(0, Math.min(ix + e.clientX - sx, innerWidth - ui.offsetWidth)) + 'px';
+            ui.style.top = Math.max(0, Math.min(iy + e.clientY - sy, innerHeight - ui.offsetHeight)) + 'px';
+            ui.style.bottom = 'auto'; ui.style.transform = 'none';
+        });
+        document.addEventListener('mouseup', () => { isDrag = false; });
+    }
+
+    async beginCapture() {
+        try {
+            const screenStream = await navigator.mediaDevices.getDisplayMedia({
+                video: { cursor: 'always', width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+                audio: false
+            });
+            if (!screenStream) return;
+
+            // Get mic audio
+            let combinedStream = screenStream;
+            this.micStream = null;
+            if (this.recMicEnabled) {
+                try {
+                    this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                    // Combine screen video + mic audio
+                    combinedStream = new MediaStream([
+                        ...screenStream.getVideoTracks(),
+                        ...this.micStream.getAudioTracks()
+                    ]);
+                } catch (micErr) {
+                    // Mic access denied — continue without audio
+                    this.micStream = null;
+                }
+            }
+
+            this.isRecording = true;
+            this.recordedChunks = [];
+
+            let mimeType = 'video/webm';
+            this.recordIsMP4 = false;
+            for (const m of ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4']) {
+                if (MediaRecorder.isTypeSupported(m)) { mimeType = m; this.recordIsMP4 = true; break; }
+            }
+            if (!this.recordIsMP4) mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+
+            this.mediaRecorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 8000000 });
+            this.mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) this.recordedChunks.push(e.data); };
+            this.mediaRecorder.onstop = () => {
+                const blob = new Blob(this.recordedChunks, { type: mimeType });
+                this.recordedChunks = [];
+                this.isRecording = false;
+                this.removeRecordingUI();
+                this.uiElement.style.display = '';
+                this.canvas.style.display = '';
+                this.svgOverlay.style.display = '';
+                this.showRecordingPreview(URL.createObjectURL(blob));
+            };
+            screenStream.getVideoTracks()[0].onended = () => { if (this.isRecording) this.stopRecording(); };
+
+            this.mediaRecorder.start(100);
+
+            // Update UI → recording state
+            const dot = document.getElementById('webext-rec-dot');
+            const close = document.getElementById('webext-rec-close');
+            if (dot) { dot.style.borderRadius = '3px'; dot.style.width = '12px'; dot.style.height = '12px'; dot.style.animation = 'webext-pulse 1.2s ease-in-out infinite'; }
+            if (close) { close.style.opacity = '0.3'; close.style.pointerEvents = 'none'; }
+
+            this.recordStartTime = Date.now();
+            this.recordTimerInterval = setInterval(() => {
+                const el = Math.floor((Date.now() - this.recordStartTime) / 1000);
+                const t = document.getElementById('webext-rec-timer');
+                if (t) t.textContent = `${String(Math.floor(el / 60)).padStart(2, '0')}:${String(el % 60).padStart(2, '0')}`;
+            }, 1000);
+        } catch (err) { this.isRecording = false; }
+    }
+
+    stopRecording() {
+        if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+            this.mediaRecorder.stop();
+            this.mediaRecorder.stream.getTracks().forEach(t => t.stop());
+        }
+        if (this.micStream) { this.micStream.getTracks().forEach(t => t.stop()); this.micStream = null; }
+        if (this.recordTimerInterval) { clearInterval(this.recordTimerInterval); this.recordTimerInterval = null; }
+    }
+
+    removeRecordingUI() {
+        const ui = document.getElementById('webext-recording-ui');
+        if (ui) ui.remove();
+        if (this.recordTimerInterval) { clearInterval(this.recordTimerInterval); this.recordTimerInterval = null; }
+    }
+
+    // Keep old name for compatibility
+    async startRecording() {
+        if (this.isRecording) {
+            this.stopRecording();
+            return;
+        }
+
+        try {
+            // Browser shows native picker: Chrome Tab / Window / Entire Screen
+            const stream = await navigator.mediaDevices.getDisplayMedia({
+                video: {
+                    cursor: 'always',
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
+                    frameRate: { ideal: 30 }
+                },
+                audio: false
+            });
+
+            if (!stream) return;
+
+            this.isRecording = true;
+            this.recordedChunks = [];
+
+            // Try MP4 (Chrome 124+), fallback WebM
+            let mimeType = 'video/webm';
+            this.recordIsMP4 = false;
+            for (const mime of ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4']) {
+                if (MediaRecorder.isTypeSupported(mime)) {
+                    mimeType = mime;
+                    this.recordIsMP4 = true;
+                    break;
+                }
+            }
+            if (!this.recordIsMP4) {
+                mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+                    ? 'video/webm;codecs=vp9' : 'video/webm';
+            }
+
+            this.mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8000000 });
+
+            this.mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) this.recordedChunks.push(e.data);
+            };
+
+            this.mediaRecorder.onstop = () => {
+                const blob = new Blob(this.recordedChunks, { type: mimeType });
+                this.recordedChunks = [];
+                this.isRecording = false;
+                this.removeRecordingUI();
+                const videoUrl = URL.createObjectURL(blob);
+                this.showRecordingPreview(videoUrl);
+            };
+
+            // Stop when user stops sharing
+            stream.getVideoTracks()[0].onended = () => {
+                if (this.isRecording) this.stopRecording();
+            };
+
+            // Hide toolbar and canvas during recording
+            this.uiElement.style.display = 'none';
+            this.canvas.style.display = 'none';
+            this.svgOverlay.style.display = 'none';
+
+            this.mediaRecorder.start(100);
+            this.showRecordingUI();
+
+        } catch (err) {
+            // User cancelled or error
+            this.isRecording = false;
+        }
+    }
+
+    stopRecording() {
+        if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+            this.mediaRecorder.stop();
+            this.mediaRecorder.stream.getTracks().forEach(t => t.stop());
+        }
+        // Restore toolbar and canvas
+        this.uiElement.style.display = '';
+        this.canvas.style.display = '';
+        this.svgOverlay.style.display = '';
+    }
+
+    showRecordingUI() {
+        const ui = document.createElement('div');
+        ui.id = 'webext-recording-ui';
+        ui.style.cssText = `
+            position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+            z-index:2147483647; display:flex; align-items:center; gap:10px;
+            background:#1a1a1a; color:#fff; padding:8px 16px; border-radius:12px;
+            box-shadow:0 2px 8px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.15);
+            font-family:-apple-system,sans-serif; font-size:13px; font-weight:500;
+            cursor:move; user-select:none;
+        `;
+
+        // Red dot (pulsing)
+        const dot = document.createElement('span');
+        dot.style.cssText = `
+            width:10px; height:10px; border-radius:50%; background:#ff3b30;
+            animation:webext-pulse 1.2s ease-in-out infinite; flex-shrink:0;
+        `;
+
+        // Timer
+        const timer = document.createElement('span');
+        timer.id = 'webext-rec-timer';
+        timer.textContent = '00:00';
+        timer.style.fontVariantNumeric = 'tabular-nums';
+
+        // Stop button
+        const stopBtn = document.createElement('button');
+        stopBtn.textContent = 'Dừng';
+        stopBtn.style.cssText = `
+            border:none; background:#ff3b30; color:#fff; padding:4px 12px;
+            border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;
+            font-family:-apple-system,sans-serif; transition:background 0.15s;
+        `;
+        stopBtn.onmouseenter = () => stopBtn.style.background = '#e0342b';
+        stopBtn.onmouseleave = () => stopBtn.style.background = '#ff3b30';
+        stopBtn.addEventListener('click', (e) => { e.stopPropagation(); this.stopRecording(); });
+
+        ui.appendChild(dot);
+        ui.appendChild(timer);
+        ui.appendChild(stopBtn);
+        document.body.appendChild(ui);
+
+        // Draggable
+        let isDragging = false, startX, startY, initX, initY;
+        ui.addEventListener('mousedown', (e) => {
+            if (e.target === stopBtn) return;
+            isDragging = true;
+            const rect = ui.getBoundingClientRect();
+            startX = e.clientX;
+            startY = e.clientY;
+            initX = rect.left;
+            initY = rect.top;
+            ui.style.transition = 'none';
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            const newX = Math.max(0, Math.min(initX + dx, window.innerWidth - ui.offsetWidth));
+            const newY = Math.max(0, Math.min(initY + dy, window.innerHeight - ui.offsetHeight));
+            ui.style.left = newX + 'px';
+            ui.style.top = newY + 'px';
+            ui.style.bottom = 'auto';
+            ui.style.transform = 'none';
+        });
+        document.addEventListener('mouseup', () => { isDragging = false; });
+
+        // Add pulse animation if not exists
+        if (!document.getElementById('webext-rec-styles')) {
+            const style = document.createElement('style');
+            style.id = 'webext-rec-styles';
+            style.textContent = `
+                @keyframes webext-pulse {
+                    0%, 100% { opacity:1; }
+                    50% { opacity:0.3; }
+                }
+                .webext-player-wrap:fullscreen {
+                    display:flex; align-items:center; justify-content:center;
+                    background:#000;
+                }
+                .webext-player-wrap:fullscreen video {
+                    max-width:100vw !important; max-height:100vh !important;
+                    width:100vw; height:100vh; object-fit:contain;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // Start timer
+        this.recordStartTime = Date.now();
+        this.recordTimerInterval = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - this.recordStartTime) / 1000);
+            const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+            const secs = String(elapsed % 60).padStart(2, '0');
+            const timerEl = document.getElementById('webext-rec-timer');
+            if (timerEl) timerEl.textContent = `${mins}:${secs}`;
+        }, 1000);
+    }
+
+    showRecordingPreview(videoUrl) {
+        const ext = this.recordIsMP4 ? 'mp4' : 'webm';
+        const overlay = document.createElement('div');
+        overlay.id = 'webext-record-preview';
+        overlay.style.cssText = `
+            position:fixed; inset:0; z-index:2147483647;
+            background:rgba(0,0,0,0.88); display:flex;
+            align-items:center; justify-content:center;
+            font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+            backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+        `;
+
+        const modal = document.createElement('div');
+        modal.style.cssText = 'max-width:75vw; display:flex; flex-direction:column; gap:16px;';
+
+        // Player wrapper
+        const playerWrap = document.createElement('div');
+        playerWrap.className = 'webext-player-wrap';
+        playerWrap.style.cssText = `
+            position:relative; border-radius:14px; overflow:hidden;
+            background:#000; box-shadow:0 20px 60px rgba(0,0,0,0.6);
+        `;
+
+        const video = document.createElement('video');
+        video.src = videoUrl;
+        video.preload = 'auto';
+        video.style.cssText = 'display:block; max-width:75vw; max-height:68vh; outline:none;';
+
+        // Big play button overlay (shown when paused)
+        const bigPlay = document.createElement('div');
+        bigPlay.style.cssText = `
+            position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+            cursor:pointer; transition:opacity 0.2s;
+        `;
+        bigPlay.innerHTML = '<div style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(0,0,0,0.3);"><svg width="24" height="24" viewBox="0 0 24 24" fill="#333" stroke="none"><polygon points="8,5 19,12 8,19"/></svg></div>';
+
+        // Controls bar
+        const bar = document.createElement('div');
+        bar.style.cssText = `
+            position:absolute; bottom:0; left:0; right:0;
+            background:linear-gradient(transparent, rgba(0,0,0,0.75));
+            padding:24px 14px 10px; display:flex; flex-direction:column; gap:8px;
+            opacity:0; transition:opacity 0.25s;
+        `;
+
+        // Progress bar
+        const progressWrap = document.createElement('div');
+        progressWrap.style.cssText = 'height:4px; background:rgba(255,255,255,0.2); border-radius:2px; cursor:pointer; position:relative;';
+        const progressFill = document.createElement('div');
+        progressFill.style.cssText = 'height:100%; width:0%; background:#fff; border-radius:2px; pointer-events:none; position:relative;';
+        const progressThumb = document.createElement('div');
+        progressThumb.style.cssText = 'position:absolute; right:-5px; top:-3px; width:10px; height:10px; border-radius:50%; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,0.3); opacity:0; transition:opacity 0.15s;';
+        progressFill.appendChild(progressThumb);
+        progressWrap.appendChild(progressFill);
+        progressWrap.onmouseenter = () => progressThumb.style.opacity = '1';
+        progressWrap.onmouseleave = () => progressThumb.style.opacity = '0';
+
+        // Bottom row: play + time | fullscreen
+        const bottomRow = document.createElement('div');
+        bottomRow.style.cssText = 'display:flex; align-items:center; gap:10px;';
+
+        // Play/Pause small button
+        const playBtn = document.createElement('button');
+        playBtn.style.cssText = 'border:none; background:none; cursor:pointer; padding:0; display:flex; color:#fff;';
+        const playSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff" stroke="none"><polygon points="6,4 20,12 6,20"/></svg>';
+        const pauseSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff" stroke="none"><rect x="5" y="4" width="4" height="16" rx="1"/><rect x="15" y="4" width="4" height="16" rx="1"/></svg>';
+        playBtn.innerHTML = playSvg;
+
+        // Time
+        const timeEl = document.createElement('span');
+        timeEl.style.cssText = 'color:rgba(255,255,255,0.8); font-size:12px; font-variant-numeric:tabular-nums; font-weight:500;';
+        timeEl.textContent = '0:00 / 0:00';
+        const fmt = (s) => { const m = Math.floor(s/60); return `${m}:${String(Math.floor(s%60)).padStart(2,'0')}`; };
+
+        // Spacer
+        const spacer = document.createElement('div');
+        spacer.style.flex = '1';
+
+        // Fullscreen button
+        const fsBtn = document.createElement('button');
+        fsBtn.style.cssText = 'border:none; background:none; cursor:pointer; padding:0; display:flex; color:#fff;';
+        fsBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
+
+        bottomRow.append(playBtn, timeEl, spacer, fsBtn);
+        bar.append(progressWrap, bottomRow);
+
+        playerWrap.append(video, bigPlay, bar);
+
+        // --- Events ---
+        const togglePlay = () => { if (video.paused) video.play(); else video.pause(); };
+        bigPlay.addEventListener('click', togglePlay);
+        video.addEventListener('click', togglePlay);
+
+        video.onplay = () => { bigPlay.style.opacity = '0'; bigPlay.style.pointerEvents = 'none'; playBtn.innerHTML = pauseSvg; };
+        video.onpause = () => { bigPlay.style.opacity = '1'; bigPlay.style.pointerEvents = 'auto'; playBtn.innerHTML = playSvg; };
+        video.onended = () => { bigPlay.style.opacity = '1'; bigPlay.style.pointerEvents = 'auto'; playBtn.innerHTML = playSvg; };
+        playBtn.addEventListener('click', (e) => { e.stopPropagation(); togglePlay(); });
+
+        video.ontimeupdate = () => {
+            if (video.duration) {
+                progressFill.style.width = (video.currentTime / video.duration * 100) + '%';
+                timeEl.textContent = `${fmt(video.currentTime)} / ${fmt(video.duration)}`;
+            }
+        };
+        progressWrap.addEventListener('click', (e) => {
+            const r = progressWrap.getBoundingClientRect();
+            video.currentTime = ((e.clientX - r.left) / r.width) * video.duration;
+        });
+        fsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (document.fullscreenElement) document.exitFullscreen();
+            else playerWrap.requestFullscreen();
+        });
+
+        // Show/hide controls
+        let hideTimer;
+        playerWrap.onmouseenter = () => { bar.style.opacity = '1'; clearTimeout(hideTimer); };
+        playerWrap.onmouseleave = () => { if (!video.paused) hideTimer = setTimeout(() => bar.style.opacity = '0', 1500); };
+        playerWrap.onmousemove = () => { bar.style.opacity = '1'; clearTimeout(hideTimer); if (!video.paused) hideTimer = setTimeout(() => bar.style.opacity = '0', 2000); };
+
+        // Action buttons
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex; gap:10px; justify-content:center;';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'Huỷ bỏ';
+        cancelBtn.style.cssText = `
+            border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.06);
+            color:rgba(255,255,255,0.7); padding:10px 24px;
+            border-radius:10px; font-size:13px; font-weight:600; cursor:pointer;
+            font-family:inherit; transition:all 0.15s;
+        `;
+        cancelBtn.onmouseenter = () => { cancelBtn.style.background = 'rgba(255,255,255,0.12)'; cancelBtn.style.color = '#fff'; };
+        cancelBtn.onmouseleave = () => { cancelBtn.style.background = 'rgba(255,255,255,0.06)'; cancelBtn.style.color = 'rgba(255,255,255,0.7)'; };
+        cancelBtn.addEventListener('click', () => { URL.revokeObjectURL(videoUrl); overlay.remove(); });
+
+        const downloadBtn = document.createElement('button');
+        downloadBtn.textContent = 'Tải về MP4';
+        downloadBtn.style.cssText = `
+            border:none; background:#007bff; color:#fff; padding:10px 28px;
+            border-radius:10px; font-size:13px; font-weight:600; cursor:pointer;
+            font-family:inherit; transition:all 0.15s;
+            box-shadow:0 4px 14px rgba(0,123,255,0.35);
+        `;
+        downloadBtn.onmouseenter = () => downloadBtn.style.background = '#0069d9';
+        downloadBtn.onmouseleave = () => downloadBtn.style.background = '#007bff';
+        downloadBtn.addEventListener('click', () => {
+            const a = document.createElement('a');
+            a.href = videoUrl;
+            a.download = `recording-${Date.now()}.${ext}`;
+            a.click();
+            setTimeout(() => { URL.revokeObjectURL(videoUrl); overlay.remove(); }, 500);
+        });
+
+        btnRow.append(cancelBtn, downloadBtn);
+        modal.append(playerWrap, btnRow);
+        overlay.appendChild(modal);
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) { URL.revokeObjectURL(videoUrl); overlay.remove(); }
+        });
+
+        document.body.appendChild(overlay);
+    }
+
+    removeRecordingUI() {
+        const ui = document.getElementById('webext-recording-ui');
+        if (ui) ui.remove();
+        if (this.recordTimerInterval) {
+            clearInterval(this.recordTimerInterval);
+            this.recordTimerInterval = null;
+        }
     }
 
     startScreenshotMode(includeDrawing = false) {
