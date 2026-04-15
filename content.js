@@ -4771,6 +4771,153 @@ class WebDrawingExtension {
         setTimeout(() => document.addEventListener('click', close, true), 10);
     }
 
+    showCursorPicker(anchorBtn) {
+        const existing = document.getElementById('webext-cursor-picker');
+        if (existing) { existing.remove(); return; }
+
+        const popup = document.createElement('div');
+        popup.id = 'webext-cursor-picker';
+        popup.style.cssText = `
+            position:fixed; z-index:2147483647; background:#fff; border-radius:12px;
+            box-shadow:0 4px 20px rgba(0,0,0,0.15); padding:6px;
+            display:grid; grid-template-columns:repeat(4, 40px); gap:4px;
+            font-family:-apple-system,sans-serif;
+        `;
+
+        const cursors = [
+            { id: 'default', label: 'Mặc định', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.5"><path d="M5 3l14 8-7 2-3 7z"/><path d="M12 13l5 5"/></svg>' },
+            { id: 'big-white', label: 'Trắng lớn', svg: '<svg width="20" height="20" viewBox="0 0 24 24"><path d="M5 3l14 8-7 2-3 7z" fill="#fff" stroke="#333" stroke-width="1.5"/></svg>' },
+            { id: 'big-black', label: 'Đen lớn', svg: '<svg width="20" height="20" viewBox="0 0 24 24"><path d="M5 3l14 8-7 2-3 7z" fill="#333" stroke="#fff" stroke-width="1"/></svg>' },
+            { id: 'red', label: 'Đỏ', svg: '<svg width="20" height="20" viewBox="0 0 24 24"><path d="M5 3l14 8-7 2-3 7z" fill="#ff3b30" stroke="#fff" stroke-width="1"/></svg>' },
+            { id: 'blue', label: 'Xanh', svg: '<svg width="20" height="20" viewBox="0 0 24 24"><path d="M5 3l14 8-7 2-3 7z" fill="#007bff" stroke="#fff" stroke-width="1"/></svg>' },
+            { id: 'green', label: 'Xanh lá', svg: '<svg width="20" height="20" viewBox="0 0 24 24"><path d="M5 3l14 8-7 2-3 7z" fill="#34c759" stroke="#fff" stroke-width="1"/></svg>' },
+            { id: 'yellow', label: 'Vàng', svg: '<svg width="20" height="20" viewBox="0 0 24 24"><path d="M5 3l14 8-7 2-3 7z" fill="#fbbf24" stroke="#333" stroke-width="1"/></svg>' },
+            { id: 'neon', label: 'Neon', svg: '<svg width="20" height="20" viewBox="0 0 24 24"><path d="M5 3l14 8-7 2-3 7z" fill="#00ff88" stroke="#333" stroke-width="1"/></svg>' },
+            { id: 'circle-red', label: 'Tròn đỏ', svg: '<svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="none" stroke="#ff3b30" stroke-width="2.5"/><circle cx="12" cy="12" r="2" fill="#ff3b30"/></svg>' },
+            { id: 'circle-blue', label: 'Tròn xanh', svg: '<svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="none" stroke="#007bff" stroke-width="2.5"/><circle cx="12" cy="12" r="2" fill="#007bff"/></svg>' },
+            { id: 'circle-yellow', label: 'Tròn vàng', svg: '<svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="none" stroke="#fbbf24" stroke-width="2.5"/><circle cx="12" cy="12" r="2" fill="#fbbf24"/></svg>' },
+            { id: 'crosshair', label: 'Chữ thập', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff3b30" stroke-width="2" stroke-linecap="round"><line x1="12" y1="4" x2="12" y2="20"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="12" cy="12" r="3" stroke-width="1.5"/></svg>' },
+        ];
+
+        cursors.forEach(cur => {
+            const isActive = this.recCursorType === cur.id;
+            const btn = document.createElement('button');
+            btn.style.cssText = `
+                width:40px; height:40px; border:2px solid ${isActive ? '#007bff' : 'transparent'};
+                border-radius:8px; background:${isActive ? '#f0f4ff' : '#f5f5f5'}; cursor:pointer;
+                display:flex; align-items:center; justify-content:center; padding:0; transition:all 0.15s;
+            `;
+            btn.innerHTML = cur.svg;
+            btn.title = cur.label;
+            btn.onmouseenter = () => { if (!isActive) btn.style.background = '#eee'; };
+            btn.onmouseleave = () => { if (!isActive) btn.style.background = '#f5f5f5'; };
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.recCursorType = cur.id;
+                this.applyRecCursor(cur.id);
+                popup.remove();
+            });
+            popup.appendChild(btn);
+        });
+
+        document.body.appendChild(popup);
+        const rect = anchorBtn.getBoundingClientRect();
+        const popRect = popup.getBoundingClientRect();
+        popup.style.left = Math.max(10, rect.left + rect.width / 2 - popRect.width / 2) + 'px';
+        popup.style.top = (rect.top - popRect.height - 8) + 'px';
+
+        const close = (ev) => {
+            if (!popup.contains(ev.target) && ev.target !== anchorBtn) {
+                popup.remove(); document.removeEventListener('click', close, true);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', close, true), 10);
+    }
+
+    applyRecCursor(type) {
+        // Remove existing custom cursor
+        let overlay = document.getElementById('webext-custom-cursor');
+        if (type === 'default') {
+            if (overlay) overlay.remove();
+            document.body.classList.remove('webext-hide-cursor');
+            document.body.style.cursor = '';
+            return;
+        }
+
+        // Hide real cursor
+        if (!document.getElementById('webext-cursor-hide-style')) {
+            const s = document.createElement('style');
+            s.id = 'webext-cursor-hide-style';
+            s.textContent = `
+                .webext-hide-cursor { cursor:none !important; }
+                .webext-hide-cursor * { cursor:none !important; }
+                #webext-recording-ui { cursor:default !important; }
+                #webext-recording-ui * { cursor:pointer !important; }
+                #webext-cursor-picker { cursor:default !important; }
+                #webext-cursor-picker * { cursor:pointer !important; }
+                #webext-ripple-picker { cursor:default !important; }
+                #webext-ripple-picker * { cursor:pointer !important; }
+                #webext-settings-popup { cursor:default !important; }
+                #webext-settings-popup * { cursor:default !important; }
+                .webext-draw-popup { cursor:default !important; }
+                .webext-draw-popup * { cursor:pointer !important; }
+                #webext-draw-ui { cursor:default !important; }
+                #webext-draw-ui * { cursor:pointer !important; }
+            `;
+            document.head.appendChild(s);
+        }
+
+        const cursorSVGs = {
+            'big-white': '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path d="M5 3l14 8-7 2-3 7z" fill="white" stroke="#333" stroke-width="1.2"/><path d="M12 13l5 5" stroke="#333" stroke-width="1.2"/></svg>',
+            'big-black': '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path d="M5 3l14 8-7 2-3 7z" fill="#222" stroke="white" stroke-width="1"/><path d="M12 13l5 5" stroke="white" stroke-width="1"/></svg>',
+            'red': '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path d="M5 3l14 8-7 2-3 7z" fill="#ff3b30" stroke="white" stroke-width="1"/><path d="M12 13l5 5" stroke="white" stroke-width="1"/></svg>',
+            'blue': '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path d="M5 3l14 8-7 2-3 7z" fill="#007bff" stroke="white" stroke-width="1"/><path d="M12 13l5 5" stroke="white" stroke-width="1"/></svg>',
+            'green': '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path d="M5 3l14 8-7 2-3 7z" fill="#34c759" stroke="white" stroke-width="1"/><path d="M12 13l5 5" stroke="white" stroke-width="1"/></svg>',
+            'yellow': '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path d="M5 3l14 8-7 2-3 7z" fill="#fbbf24" stroke="#333" stroke-width="1"/><path d="M12 13l5 5" stroke="#333" stroke-width="1"/></svg>',
+            'neon': '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path d="M5 3l14 8-7 2-3 7z" fill="#00ff88" stroke="#333" stroke-width="1"/><path d="M12 13l5 5" stroke="#333" stroke-width="1"/></svg>',
+            'circle-red': '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="#ff3b30" stroke-width="3"/><circle cx="12" cy="12" r="2.5" fill="#ff3b30"/></svg>',
+            'circle-blue': '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="#007bff" stroke-width="3"/><circle cx="12" cy="12" r="2.5" fill="#007bff"/></svg>',
+            'circle-yellow': '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="#fbbf24" stroke-width="3"/><circle cx="12" cy="12" r="2.5" fill="#fbbf24"/></svg>',
+            'crosshair': '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ff3b30" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="3" x2="12" y2="21"/><line x1="3" y1="12" x2="21" y2="12"/><circle cx="12" cy="12" r="4" stroke-width="2"/></svg>',
+        };
+
+        const svg = cursorSVGs[type];
+        if (!svg) return;
+
+        // Create floating cursor element that follows mouse
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'webext-custom-cursor';
+            overlay.style.cssText = `
+                position:fixed; pointer-events:none; z-index:2147483647;
+                transform:translate(-2px,-2px); transition:none;
+            `;
+            document.body.appendChild(overlay);
+
+            document.addEventListener('mousemove', (e) => {
+                const el = document.getElementById('webext-custom-cursor');
+                if (!el) return;
+                const isCircle = this.recCursorType.startsWith('circle') || this.recCursorType === 'crosshair';
+                const offset = isCircle ? 14 : 2;
+                el.style.left = (e.clientX - offset) + 'px';
+                el.style.top = (e.clientY - offset) + 'px';
+                // Hide custom cursor over UI elements so real cursor is usable
+                const overUI = e.target.closest('#webext-recording-ui, #webext-cursor-picker, #webext-ripple-picker, .webext-draw-popup, #webext-settings-popup');
+                el.style.display = overUI ? 'none' : '';
+            });
+        }
+
+        overlay.innerHTML = svg;
+        document.body.classList.add('webext-hide-cursor');
+    }
+
+    removeRecCursor() {
+        const overlay = document.getElementById('webext-custom-cursor');
+        if (overlay) overlay.remove();
+        document.body.classList.remove('webext-hide-cursor');
+        this.recCursorType = 'default';
+    }
+
     showRecordBar() {
         this.removeRecordingUI();
         this.uiElement.style.display = 'none';
@@ -4872,7 +5019,19 @@ class WebDrawingExtension {
             this.showRipplePicker(rippleBtn);
         });
 
-        ui.append(drag, recBtn, timer, micBtn, rippleBtn, closeBtn);
+        // Cursor style button
+        const cursorBtn = document.createElement('button');
+        cursorBtn.id = 'webext-rec-cursor';
+        cursorBtn.style.cssText = btnStyle;
+        cursorBtn.style.color = '#333';
+        cursorBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 8-7 2-3 7z"/></svg>';
+        this.recCursorType = 'default';
+        cursorBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.showCursorPicker(cursorBtn);
+        });
+
+        ui.append(drag, recBtn, timer, micBtn, rippleBtn, cursorBtn, closeBtn);
         document.body.appendChild(ui);
 
         // Record/Stop toggle
@@ -4987,6 +5146,7 @@ class WebDrawingExtension {
         const ui = document.getElementById('webext-recording-ui');
         if (ui) ui.remove();
         if (this.recordTimerInterval) { clearInterval(this.recordTimerInterval); this.recordTimerInterval = null; }
+        this.removeRecCursor();
     }
 
     // Keep old name for compatibility
