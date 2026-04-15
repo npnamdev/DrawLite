@@ -26,6 +26,7 @@ class WebDrawingExtension {
         this.drawingsVisible = true;
         this.stepCounter = 1;
         this.currentStamp = '⭐';
+        this.numArrowCounter = 1;
         this.shapes = []; // Store all shapes for movement
         this.selectedShape = null; // Currently selected shape for moving
         this.selectedShapes = []; // Multiple selected shapes
@@ -655,6 +656,8 @@ class WebDrawingExtension {
             { id: 'spotlight', label: 'Spotlight', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="22" height="22" rx="2" fill="currentColor" opacity="0.15"/><circle cx="12" cy="12" r="5" fill="white" stroke="currentColor"/></svg>' },
             { id: 'imagegrab', label: 'Lấy ảnh', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>' },
             { id: 'note', label: 'Ghi chú', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="13" y2="12"/></svg>' },
+            { id: 'crop', label: 'Cắt & Sao chép', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v4"/><path d="M6 18v4"/><path d="M6 6h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6"/><path d="M2 6h4"/><path d="M18 6h4"/></svg>' },
+            { id: 'numarrow', label: 'Mũi tên số', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="15 8 19 12 15 16"/><circle cx="5" cy="12" r="4" fill="currentColor" opacity="0.15"/><text x="5" y="15" text-anchor="middle" fill="currentColor" stroke="none" font-size="8" font-weight="bold">1</text></svg>' },
         ];
 
         moretoolsDefs.forEach(def => {
@@ -1043,10 +1046,10 @@ class WebDrawingExtension {
                 document.querySelector('.webext-draw-tool-btn[data-tool="shapes"]')?.classList.remove('popup-active');
             }
             const screenshotPopupEl = document.getElementById('webext-screenshot-popup');
-            if (!e.target.closest('.webext-draw-tool-btn[data-tool="screenshot"]') &&
+            if (!e.target.closest('.webext-draw-tool-btn[data-tool="moretools"]') &&
+                !e.target.closest('#webext-moretools-popup') &&
                 !e.target.closest('#webext-screenshot-popup')) {
                 screenshotPopupEl.style.display = 'none';
-                document.querySelector('.webext-draw-tool-btn[data-tool="screenshot"]')?.classList.remove('popup-active');
             }
             const moretoolsPopupEl = document.getElementById('webext-moretools-popup');
             if (!e.target.closest('.webext-draw-tool-btn[data-tool="moretools"]') &&
@@ -1499,6 +1502,10 @@ class WebDrawingExtension {
                 this.redrawAllShapes();
             }
             this.isDrawing = false;
+        } else if (this.drawingMode === 'crop') {
+            // Crop & Copy: drag to select region
+        } else if (this.drawingMode === 'numarrow') {
+            // Numbering Arrow: drag from start to end
         } else if (this.drawingMode === 'magnifier') {
             // Magnifier: capture a region and show it zoomed
             // Uses drag like blur/spotlight
@@ -1580,7 +1587,8 @@ class WebDrawingExtension {
                     this.selectedShape.x = this.originalShape.x + deltaX;
                     this.selectedShape.y = this.originalShape.y + deltaY;
                 } else if (this.selectedShape.type === 'line' ||
-                    this.selectedShape.type === 'arrow') {
+                    this.selectedShape.type === 'arrow' ||
+                    this.selectedShape.type === 'numarrow') {
                     this.selectedShape.x1 = this.originalShape.x1 + deltaX;
                     this.selectedShape.y1 = this.originalShape.y1 + deltaY;
                     this.selectedShape.x2 = this.originalShape.x2 + deltaX;
@@ -1746,6 +1754,77 @@ class WebDrawingExtension {
             this.ctx.fillText('🔍', mx + mw / 2, my + mh / 2);
             this.ctx.textAlign = 'start';
             this.ctx.textBaseline = 'alphabetic';
+        } else if (this.drawingMode === 'crop' && this.isDrawing) {
+            // Crop preview — dim outside, keep drawings visible
+            this.redrawAllShapes();
+            const cx = Math.min(this.shapeStartX, e.clientX);
+            const cy = Math.min(this.shapeStartY, e.clientY);
+            const cw = Math.abs(e.clientX - this.shapeStartX);
+            const ch = Math.abs(e.clientY - this.shapeStartY);
+            this.lastX = e.clientX;
+            this.lastY = e.clientY;
+            // Dim outside using evenodd (preserves drawings underneath)
+            const canvasW = this.canvas.width / (window.devicePixelRatio || 1);
+            const canvasH = this.canvas.height / (window.devicePixelRatio || 1);
+            this.ctx.beginPath();
+            this.ctx.rect(0, 0, canvasW, canvasH);
+            this.ctx.moveTo(cx, cy);
+            this.ctx.lineTo(cx, cy + ch);
+            this.ctx.lineTo(cx + cw, cy + ch);
+            this.ctx.lineTo(cx + cw, cy);
+            this.ctx.closePath();
+            this.ctx.fillStyle = 'rgba(0,0,0,0.4)';
+            this.ctx.fill('evenodd');
+            // Border
+            this.ctx.strokeStyle = '#007bff';
+            this.ctx.lineWidth = 2;
+            this.ctx.setLineDash([6, 4]);
+            this.ctx.strokeRect(cx, cy, cw, ch);
+            this.ctx.setLineDash([]);
+            // Size label
+            this.ctx.font = '600 11px -apple-system, sans-serif';
+            this.ctx.fillStyle = '#007bff';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText(`${Math.round(cw)} × ${Math.round(ch)}`, cx + cw / 2, cy - 8);
+            this.ctx.textAlign = 'start';
+        } else if (this.drawingMode === 'numarrow' && this.isDrawing) {
+            // Numbering Arrow preview
+            this.redrawAllShapes();
+            this.lastX = e.clientX;
+            this.lastY = e.clientY;
+            const sx = this.shapeStartX, sy = this.shapeStartY;
+            const ex = e.clientX, ey = e.clientY;
+            // Arrow line
+            this.ctx.strokeStyle = this.currentColor;
+            this.ctx.lineWidth = this.lineWidth;
+            this.ctx.globalAlpha = this.strokeOpacity;
+            this.ctx.beginPath();
+            this.ctx.moveTo(sx, sy);
+            this.ctx.lineTo(ex, ey);
+            this.ctx.stroke();
+            // Arrowhead
+            const angle = Math.atan2(ey - sy, ex - sx);
+            const headLen = 12;
+            this.ctx.beginPath();
+            this.ctx.moveTo(ex, ey);
+            this.ctx.lineTo(ex - headLen * Math.cos(angle - 0.4), ey - headLen * Math.sin(angle - 0.4));
+            this.ctx.moveTo(ex, ey);
+            this.ctx.lineTo(ex - headLen * Math.cos(angle + 0.4), ey - headLen * Math.sin(angle + 0.4));
+            this.ctx.stroke();
+            // Number circle at start
+            const r = 14;
+            this.ctx.beginPath();
+            this.ctx.arc(sx, sy, r, 0, Math.PI * 2);
+            this.ctx.fillStyle = this.currentColor;
+            this.ctx.fill();
+            this.ctx.fillStyle = '#fff';
+            this.ctx.font = 'bold 13px -apple-system, sans-serif';
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            this.ctx.fillText(String(this.numArrowCounter || 1), sx, sy);
+            this.ctx.textAlign = 'start';
+            this.ctx.textBaseline = 'alphabetic';
+            this.ctx.globalAlpha = 1;
         } else {
             this.drawShape(e.clientX, e.clientY);
         }
@@ -2188,7 +2267,33 @@ class WebDrawingExtension {
                     });
                     this.redrawAllShapes();
                 }
-            } else if (this.drawingMode !== 'pen' && this.drawingMode !== 'eraser' && this.drawingMode !== 'move' && this.drawingMode !== 'picker' && this.drawingMode !== 'freepolygon' && this.drawingMode !== 'stepmarker' && this.drawingMode !== 'stamp' && this.drawingMode !== 'note') {
+            } else if (this.drawingMode === 'crop') {
+                const cx = Math.min(this.shapeStartX, this.lastX);
+                const cy = Math.min(this.shapeStartY, this.lastY);
+                const cw = Math.abs(this.lastX - this.shapeStartX);
+                const ch = Math.abs(this.lastY - this.shapeStartY);
+                if (cw > 5 && ch > 5) {
+                    this.cropAndCopy(cx, cy, cw, ch);
+                }
+                this.redrawAllShapes();
+            } else if (this.drawingMode === 'numarrow') {
+                const sx = this.shapeStartX, sy = this.shapeStartY;
+                const ex = this.lastX, ey = this.lastY;
+                const dist = Math.sqrt(Math.pow(ex - sx, 2) + Math.pow(ey - sy, 2));
+                if (dist > 10) {
+                    if (!this.numArrowCounter) this.numArrowCounter = 1;
+                    this.saveState();
+                    this.shapes.push({
+                        type: 'numarrow',
+                        x1: sx, y1: sy, x2: ex, y2: ey,
+                        number: this.numArrowCounter++,
+                        color: this.currentColor,
+                        strokeWidth: this.lineWidth,
+                        opacity: this.strokeOpacity
+                    });
+                    this.redrawAllShapes();
+                }
+            } else if (this.drawingMode !== 'pen' && this.drawingMode !== 'eraser' && this.drawingMode !== 'move' && this.drawingMode !== 'picker' && this.drawingMode !== 'freepolygon' && this.drawingMode !== 'stepmarker' && this.drawingMode !== 'stamp' && this.drawingMode !== 'note' && this.drawingMode !== 'crop') {
                 const shape = this.createShapeFromSVG();
                 if (shape) {
                     this.saveState();
@@ -2728,6 +2833,14 @@ class WebDrawingExtension {
                 if (x >= shape.x && x <= shape.x + w && y >= shape.y && y <= shape.y + h) {
                     return shape;
                 }
+            } else if (shape.type === 'numarrow') {
+                // Check near start circle or line
+                if (Math.sqrt(Math.pow(x - shape.x1, 2) + Math.pow(y - shape.y1, 2)) <= 18) return shape;
+                const minX = Math.min(shape.x1, shape.x2) - 10;
+                const maxX = Math.max(shape.x1, shape.x2) + 10;
+                const minY = Math.min(shape.y1, shape.y2) - 10;
+                const maxY = Math.max(shape.y1, shape.y2) + 10;
+                if (x >= minX && x <= maxX && y >= minY && y <= maxY) return shape;
             }
         }
         return null;
@@ -3006,6 +3119,10 @@ class WebDrawingExtension {
             bounds = { x: shape.x - half, y: shape.y - half, width: shape.size, height: shape.size };
         } else if (shape.type === 'callout') {
             bounds = { x: shape.x, y: shape.y, width: shape.width || 120, height: shape.height || 50 };
+        } else if (shape.type === 'numarrow') {
+            const minX = Math.min(shape.x1, shape.x2);
+            const minY = Math.min(shape.y1, shape.y2);
+            bounds = { x: minX - 16, y: minY - 16, width: Math.abs(shape.x2 - shape.x1) + 32, height: Math.abs(shape.y2 - shape.y1) + 32 };
         }
 
         return bounds;
@@ -3990,6 +4107,36 @@ class WebDrawingExtension {
                 this.ctx.lineTo(dx, dy + dh);
                 this.ctx.stroke();
                 this.ctx.setLineDash([]);
+            } else if (shape.type === 'numarrow') {
+                // Arrow line
+                this.ctx.strokeStyle = shape.color;
+                this.ctx.lineWidth = shape.strokeWidth;
+                this.ctx.beginPath();
+                this.ctx.moveTo(shape.x1, shape.y1);
+                this.ctx.lineTo(shape.x2, shape.y2);
+                this.ctx.stroke();
+                // Arrowhead
+                const angle = Math.atan2(shape.y2 - shape.y1, shape.x2 - shape.x1);
+                const headLen = Math.max(12, shape.strokeWidth * 4);
+                this.ctx.beginPath();
+                this.ctx.moveTo(shape.x2, shape.y2);
+                this.ctx.lineTo(shape.x2 - headLen * Math.cos(angle - 0.4), shape.y2 - headLen * Math.sin(angle - 0.4));
+                this.ctx.moveTo(shape.x2, shape.y2);
+                this.ctx.lineTo(shape.x2 - headLen * Math.cos(angle + 0.4), shape.y2 - headLen * Math.sin(angle + 0.4));
+                this.ctx.stroke();
+                // Number circle at start
+                const r = 14;
+                this.ctx.beginPath();
+                this.ctx.arc(shape.x1, shape.y1, r, 0, Math.PI * 2);
+                this.ctx.fillStyle = shape.color;
+                this.ctx.fill();
+                this.ctx.fillStyle = '#fff';
+                this.ctx.font = 'bold 13px -apple-system, sans-serif';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText(String(shape.number), shape.x1, shape.y1);
+                this.ctx.textAlign = 'start';
+                this.ctx.textBaseline = 'alphabetic';
             }
             this.ctx.globalAlpha = 1;
         });
@@ -4366,49 +4513,75 @@ class WebDrawingExtension {
 
         // All other tools: canvas captures events
         this.canvas.style.pointerEvents = 'auto';
+        this.canvas.style.cursor = 'crosshair';
+    }
 
-        // Custom cursor helpers
-        const svgCursor = (svg, hotX = 0, hotY = 0) => {
-            return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${hotX} ${hotY}, auto`;
-        };
+    async cropAndCopy(x, y, w, h) {
+        // Hide toolbar and drawing overlays before capture
+        const toolbar = document.querySelector('.webext-draw-toolbar');
+        const origToolbar = toolbar ? toolbar.style.display : '';
+        if (toolbar) toolbar.style.display = 'none';
+        this.canvas.style.display = 'none';
+        this.svgOverlay.style.display = 'none';
 
-        const penSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%23333" stroke-width="1.5"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><circle cx="2" cy="2" r="1.5" fill="%23333"/></svg>';
-        const eraserSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%23333" stroke-width="1.5"><path d="M20 20H7l-4-4a1 1 0 0 1 0-1.414l9-9a1 1 0 0 1 1.414 0l7 7a1 1 0 0 1 0 1.414l-4 4"/><rect x="0" y="0" width="4" height="4" rx="1" fill="%23ff4444" opacity="0.6"/></svg>';
-        const textSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><line x1="12" y1="4" x2="12" y2="20" stroke="%23333" stroke-width="2"/><line x1="8" y1="4" x2="16" y2="4" stroke="%23333" stroke-width="2"/><line x1="9" y1="20" x2="15" y2="20" stroke="%23333" stroke-width="1.5"/></svg>';
-        const rulerSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%23ff4444" stroke-width="1.5"><circle cx="4" cy="4" r="3" fill="none"/><line x1="4" y1="0" x2="4" y2="8"/><line x1="0" y1="4" x2="8" y2="4"/></svg>';
-        const noteSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M19 13a2 2 0 0 1-2 2H7l-3 3V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2z" stroke="%23333" stroke-width="1.5" fill="%23fffbe6"/><circle cx="3" cy="21" r="1.5" fill="%23333"/></svg>';
-        const spotSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%23333" stroke-width="1"><rect x="1" y="1" width="22" height="22" rx="2" fill="%23000" opacity="0.15" stroke="none"/><rect x="6" y="6" width="12" height="12" rx="1" fill="%23fff" stroke="%23333"/></svg>';
+        try {
+            const response = await chrome.runtime.sendMessage({ action: 'captureScreenshot' });
 
-        switch (this.drawingMode) {
-            case 'pen':
-                this.canvas.style.cursor = svgCursor(penSvg, 1, 1);
-                break;
-            case 'eraser':
-                this.canvas.style.cursor = svgCursor(eraserSvg, 2, 2);
-                break;
-            case 'move':
-                this.canvas.style.cursor = 'move';
-                break;
-            case 'text':
-                this.canvas.style.cursor = svgCursor(textSvg, 12, 20);
-                break;
-            case 'ruler':
-                this.canvas.style.cursor = svgCursor(rulerSvg, 4, 4);
-                break;
-            case 'stepmarker':
-                this.canvas.style.cursor = 'copy';
-                break;
-            case 'note':
-                this.canvas.style.cursor = svgCursor(noteSvg, 3, 21);
-                break;
-            case 'blur':
-            case 'spotlight':
-                this.canvas.style.cursor = 'crosshair';
-                break;
-            default:
-                // Shapes (rect, circle, line, arrow, etc.)
-                this.canvas.style.cursor = 'crosshair';
+            // Restore UI
+            if (toolbar) toolbar.style.display = origToolbar;
+            this.canvas.style.display = '';
+            this.svgOverlay.style.display = '';
+
+            if (response && response.dataUrl) {
+                const img = new Image();
+                img.onload = () => {
+                    const dpr = window.devicePixelRatio || 1;
+                    const cropCanvas = document.createElement('canvas');
+                    cropCanvas.width = w * dpr;
+                    cropCanvas.height = h * dpr;
+                    const cropCtx = cropCanvas.getContext('2d');
+                    cropCtx.drawImage(img, x * dpr, y * dpr, w * dpr, h * dpr, 0, 0, w * dpr, h * dpr);
+
+                    cropCanvas.toBlob((blob) => {
+                        if (blob) {
+                            navigator.clipboard.write([
+                                new ClipboardItem({ 'image/png': blob })
+                            ]).then(() => {
+                                this.showCropFeedback(x, y, w, h);
+                            }).catch(() => {
+                                // Fallback: download
+                                const url = cropCanvas.toDataURL('image/png');
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `crop-${Date.now()}.png`;
+                                a.click();
+                            });
+                        }
+                    }, 'image/png');
+                };
+                img.src = response.dataUrl;
+            }
+        } catch (err) {
+            // Restore UI on error
+            if (toolbar) toolbar.style.display = origToolbar;
+            this.canvas.style.display = '';
+            this.svgOverlay.style.display = '';
         }
+    }
+
+    showCropFeedback(x, y, w, h) {
+        const feedback = document.createElement('div');
+        feedback.textContent = '✓ Đã sao chép';
+        feedback.style.cssText = `
+            position:fixed; left:${x + w / 2}px; top:${y + h / 2}px;
+            transform:translate(-50%,-50%); background:#333; color:#fff;
+            padding:6px 14px; border-radius:8px; font-size:12px; font-weight:600;
+            font-family:-apple-system,sans-serif; z-index:2147483647;
+            pointer-events:none; animation:fadeIn 0.2s ease;
+        `;
+        document.body.appendChild(feedback);
+        setTimeout(() => { feedback.style.opacity = '0'; feedback.style.transition = 'opacity 0.3s'; }, 800);
+        setTimeout(() => feedback.remove(), 1100);
     }
 
     startScreenshotMode(includeDrawing = false) {
