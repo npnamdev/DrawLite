@@ -27,6 +27,8 @@ class WebDrawingExtension {
         this.stepCounter = 1;
         this.currentStamp = '⭐';
         this.numArrowCounter = 1;
+        this.clickRippleEnabled = false;
+        this.clickRippleColor = '#007bff';
         this.shapes = []; // Store all shapes for movement
         this.selectedShape = null; // Currently selected shape for moving
         this.selectedShapes = []; // Multiple selected shapes
@@ -1070,6 +1072,112 @@ class WebDrawingExtension {
                 document.querySelector('.webext-draw-tool-btn[data-tool="utilities"]')?.classList.remove('popup-active');
             }
         });
+
+        // Click effects — active when recording bar is visible
+        document.addEventListener('click', (e) => {
+            if (!this.clickRippleEnabled || !document.getElementById('webext-recording-ui')) return;
+            const x = e.clientX, y = e.clientY;
+            const type = this.clickRippleType || 'ring';
+
+            const c = this.clickRippleColor || '#007bff';
+            const base = `position:fixed; left:${x}px; top:${y}px; pointer-events:none; z-index:2147483646;`;
+
+            if (type === 'highlight') {
+                // Yellow border ring — stays briefly then fades fast
+                const hl = document.createElement('div');
+                hl.style.cssText = base + `
+                    width:40px; height:40px; border-radius:50%; transform:translate(-50%,-50%);
+                    border:3px solid #fbbf24; background:rgba(251,191,36,0.1);
+                    animation:webext-highlight 0.45s ease-out forwards;
+                `;
+                document.body.appendChild(hl);
+                setTimeout(() => hl.remove(), 450);
+            } else if (type === 'ring') {
+                for (let i = 0; i < 2; i++) {
+                    const ring = document.createElement('div');
+                    ring.style.cssText = base + `
+                        width:10px; height:10px; border-radius:50%; transform:translate(-50%,-50%);
+                        border:${4 - i}px solid ${c}; opacity:${1 - i * 0.3};
+                        background:${i === 0 ? c + '25' : 'transparent'};
+                        animation:webext-ring ${0.5 + i * 0.12}s ease-out forwards;
+                    `;
+                    document.body.appendChild(ring);
+                    setTimeout(() => ring.remove(), 700);
+                }
+            } else if (type === 'glow') {
+                const spot = document.createElement('div');
+                spot.style.cssText = base + `
+                    width:24px; height:24px; border-radius:50%; transform:translate(-50%,-50%);
+                    background:${c}; box-shadow:0 0 24px ${c}aa, 0 0 48px ${c}55;
+                    animation:webext-glow-spot 0.6s ease-out forwards;
+                `;
+                const wave = document.createElement('div');
+                wave.style.cssText = base + `
+                    width:10px; height:10px; border-radius:50%; transform:translate(-50%,-50%);
+                    border:3px solid ${c}; animation:webext-ring 0.7s ease-out forwards;
+                `;
+                document.body.appendChild(spot);
+                document.body.appendChild(wave);
+                setTimeout(() => { spot.remove(); wave.remove(); }, 700);
+            } else if (type === 'burst') {
+                const count = 12;
+                for (let i = 0; i < count; i++) {
+                    const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+                    const p = document.createElement('div');
+                    const dist = 30 + Math.random() * 30;
+                    const tx = Math.cos(angle) * dist;
+                    const ty = Math.sin(angle) * dist;
+                    const size = 5 + Math.random() * 5;
+                    p.style.cssText = base + `
+                        width:${size}px; height:${size}px; border-radius:50%;
+                        background:${c}; box-shadow:0 0 8px ${c};
+                        transform:translate(-50%,-50%);
+                        animation:webext-burst 0.55s ease-out forwards;
+                        --tx:${tx}px; --ty:${ty}px;
+                    `;
+                    document.body.appendChild(p);
+                    setTimeout(() => p.remove(), 550);
+                }
+                const flash = document.createElement('div');
+                flash.style.cssText = base + `
+                    width:18px; height:18px; border-radius:50%; transform:translate(-50%,-50%);
+                    background:${c}; box-shadow:0 0 20px ${c};
+                    animation:webext-glow-spot 0.35s ease-out forwards;
+                `;
+                document.body.appendChild(flash);
+                setTimeout(() => flash.remove(), 350);
+            }
+        }, true);
+
+        // Inject click effect animations
+        if (!document.getElementById('webext-ripple-styles')) {
+            const s = document.createElement('style');
+            s.id = 'webext-ripple-styles';
+            s.textContent = `
+                @keyframes webext-highlight {
+                    0% { opacity:1; transform:translate(-50%,-50%) scale(0.6); }
+                    40% { opacity:1; transform:translate(-50%,-50%) scale(1); }
+                    100% { opacity:0; transform:translate(-50%,-50%) scale(1.05); }
+                }
+                @keyframes webext-ring {
+                    0% { width:0; height:0; opacity:1; }
+                    100% { width:80px; height:80px; opacity:0; }
+                }
+                @keyframes webext-glow-spot {
+                    0% { opacity:1; transform:translate(-50%,-50%) scale(1); }
+                    100% { opacity:0; transform:translate(-50%,-50%) scale(3); }
+                }
+                @keyframes webext-glow-wave {
+                    0% { width:0; height:0; opacity:1; }
+                    100% { width:100px; height:100px; opacity:0; }
+                }
+                @keyframes webext-burst {
+                    0% { opacity:1; transform:translate(-50%,-50%) translate(0,0) scale(1); }
+                    100% { opacity:0; transform:translate(-50%,-50%) translate(var(--tx),var(--ty)) scale(0.3); }
+                }
+            `;
+            document.head.appendChild(s);
+        }
 
         this.canvas.addEventListener('mousedown', (e) => this.startDrawing(e));
         this.canvas.addEventListener('mousemove', (e) => {
@@ -4590,6 +4698,75 @@ class WebDrawingExtension {
 
     // ===== Screen Recording =====
 
+    showRipplePicker(anchorBtn) {
+        const existing = document.getElementById('webext-ripple-picker');
+        if (existing) { existing.remove(); return; }
+
+        const popup = document.createElement('div');
+        popup.id = 'webext-ripple-picker';
+        popup.style.cssText = `
+            position:fixed; z-index:2147483647; background:#fff; border-radius:12px;
+            box-shadow:0 4px 20px rgba(0,0,0,0.15); padding:6px;
+            display:grid; grid-template-columns:repeat(4, 40px); gap:4px;
+            font-family:-apple-system,sans-serif;
+        `;
+
+        const options = [
+            { type: 'off', label: 'Tắt', color: '#ccc', preview: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' },
+            { type: 'highlight', label: 'Viền vàng', color: '#fbbf24', preview: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="#fbbf24" stroke-width="3"/></svg>' },
+            { type: 'ring', label: 'Xanh dương', color: '#007bff', preview: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#007bff" stroke-width="2.5"><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="9" opacity="0.4"/></svg>' },
+            { type: 'ring', label: 'Đỏ', color: '#ff3b30', preview: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff3b30" stroke-width="2.5"><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="9" opacity="0.4"/></svg>' },
+            { type: 'glow', label: 'Vàng sáng', color: '#fbbf24', preview: '<svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="#fbbf24" opacity="0.8"/><circle cx="12" cy="12" r="10" fill="#fbbf24" opacity="0.2"/></svg>' },
+            { type: 'glow', label: 'Tím sáng', color: '#8b5cf6', preview: '<svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="#8b5cf6" opacity="0.8"/><circle cx="12" cy="12" r="10" fill="#8b5cf6" opacity="0.2"/></svg>' },
+            { type: 'burst', label: 'Cam lửa', color: '#ff6b00', preview: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff6b00" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="2" fill="#ff6b00"/><line x1="12" y1="3" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="3" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="21" y2="12"/></svg>' },
+            { type: 'burst', label: 'Hồng', color: '#ec4899', preview: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ec4899" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="2" fill="#ec4899"/><line x1="12" y1="3" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="3" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="21" y2="12"/></svg>' },
+        ];
+
+        options.forEach(opt => {
+            const btn = document.createElement('button');
+            const isActive = opt.type === 'off' ? !this.clickRippleEnabled : (this.clickRippleEnabled && this.clickRippleType === opt.type && this.clickRippleColor === opt.color);
+            btn.style.cssText = `
+                width:40px; height:40px; border:2px solid ${isActive ? '#007bff' : 'transparent'};
+                border-radius:8px; background:${isActive ? '#f0f4ff' : '#f5f5f5'}; cursor:pointer;
+                display:flex; align-items:center; justify-content:center; padding:0; transition:all 0.15s;
+            `;
+            btn.innerHTML = opt.preview;
+            btn.title = opt.label;
+            btn.onmouseenter = () => { if (!isActive) btn.style.background = '#eee'; };
+            btn.onmouseleave = () => { if (!isActive) btn.style.background = '#f5f5f5'; };
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (opt.type === 'off') {
+                    this.clickRippleEnabled = false;
+                    anchorBtn.style.color = '#ccc';
+                } else {
+                    this.clickRippleEnabled = true;
+                    this.clickRippleType = opt.type;
+                    this.clickRippleColor = opt.color;
+                    anchorBtn.style.color = opt.color;
+                }
+                popup.remove();
+            });
+            popup.appendChild(btn);
+        });
+
+        document.body.appendChild(popup);
+
+        // Position above the anchor button
+        const rect = anchorBtn.getBoundingClientRect();
+        const popRect = popup.getBoundingClientRect();
+        popup.style.left = (rect.left + rect.width / 2 - popRect.width / 2) + 'px';
+        popup.style.top = (rect.top - popRect.height - 8) + 'px';
+
+        const close = (ev) => {
+            if (!popup.contains(ev.target) && ev.target !== anchorBtn) {
+                popup.remove();
+                document.removeEventListener('click', close, true);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', close, true), 10);
+    }
+
     showRecordBar() {
         this.removeRecordingUI();
         this.uiElement.style.display = 'none';
@@ -4678,7 +4855,20 @@ class WebDrawingExtension {
             }
         });
 
-        ui.append(drag, recBtn, timer, micBtn, closeBtn);
+        // Click effect button — opens picker popup
+        const rippleBtn = document.createElement('button');
+        rippleBtn.id = 'webext-rec-ripple';
+        this.clickRippleEnabled = true;
+        this.clickRippleType = 'ring'; // ring | glow | burst
+        rippleBtn.style.cssText = btnStyle;
+        rippleBtn.style.color = '#333';
+        rippleBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7" opacity="0.5"/><circle cx="12" cy="12" r="11" opacity="0.2"/></svg>';
+        rippleBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.showRipplePicker(rippleBtn);
+        });
+
+        ui.append(drag, recBtn, timer, micBtn, rippleBtn, closeBtn);
         document.body.appendChild(ui);
 
         // Record/Stop toggle
