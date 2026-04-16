@@ -5067,6 +5067,64 @@ class WebDrawingExtension {
         document.addEventListener('mouseup', () => { isDrag = false; });
     }
 
+    showCountdown() {
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.id = 'webext-countdown';
+            overlay.style.cssText = `
+                position:fixed; inset:0; z-index:2147483647;
+                display:flex; align-items:center; justify-content:center;
+                pointer-events:none;
+            `;
+
+            const circle = document.createElement('div');
+            circle.style.cssText = `
+                width:90px; height:90px; border-radius:50%;
+                background:rgba(0,0,0,0.6); backdrop-filter:blur(6px);
+                display:flex; align-items:center; justify-content:center;
+                font-size:40px; font-weight:700; color:#fff;
+                font-family:-apple-system,sans-serif;
+                box-shadow:0 8px 32px rgba(0,0,0,0.2);
+            `;
+            overlay.appendChild(circle);
+            document.body.appendChild(overlay);
+
+            let count = 3;
+            circle.textContent = count;
+            circle.style.animation = 'webext-countdown-pop 0.8s ease-out';
+
+            const tick = setInterval(() => {
+                count--;
+                if (count <= 0) {
+                    clearInterval(tick);
+                    overlay.remove();
+                    resolve();
+                } else {
+                    circle.textContent = count;
+                    circle.style.animation = 'none';
+                    circle.offsetHeight; // force reflow
+                    circle.style.animation = 'webext-countdown-pop 0.8s ease-out';
+                }
+            }, 1000);
+
+            // Inject animation
+            if (!document.getElementById('webext-countdown-style')) {
+                const s = document.createElement('style');
+                s.id = 'webext-countdown-style';
+                s.textContent = `
+                    @keyframes webext-countdown-pop {
+                        0% { transform:scale(0.5); opacity:0; }
+                        20% { transform:scale(1.1); opacity:1; }
+                        40% { transform:scale(1); }
+                        80% { opacity:1; }
+                        100% { opacity:0.3; transform:scale(0.95); }
+                    }
+                `;
+                document.head.appendChild(s);
+            }
+        });
+    }
+
     async beginCapture() {
         try {
             const screenStream = await navigator.mediaDevices.getDisplayMedia({
@@ -5115,6 +5173,9 @@ class WebDrawingExtension {
                 this.showRecordingPreview(URL.createObjectURL(blob));
             };
             screenStream.getVideoTracks()[0].onended = () => { if (this.isRecording) this.stopRecording(); };
+
+            // Countdown 3-2-1 then start
+            await this.showCountdown();
 
             this.mediaRecorder.start(100);
 
