@@ -80,6 +80,44 @@ class WebDrawingExtension {
             if (request.action === "toggleUI") {
                 this.toggleExtension();
             }
+            // Recording complete — show preview
+            if (request.action === 'recording-done') {
+                this.isRecording = false;
+                this.removeRecordingUI();
+                if (this.uiElement) this.uiElement.style.display = '';
+                if (this.canvas) this.canvas.style.display = '';
+                if (this.svgOverlay) this.svgOverlay.style.display = '';
+                // Convert dataUrl to blob for preview
+                fetch(request.dataUrl).then(r => r.blob()).then(blob => {
+                    this.recordIsMP4 = (request.ext === 'mp4');
+                    this.showRecordingPreview(URL.createObjectURL(blob));
+                });
+            }
+            // Recording error
+            if (request.action === 'recording-did-error') {
+                this.isRecording = false;
+                this.removeRecordingUI();
+                if (this.uiElement) this.uiElement.style.display = '';
+                if (this.canvas) this.canvas.style.display = '';
+                if (this.svgOverlay) this.svgOverlay.style.display = '';
+            }
+            // Restore recording UI after page navigation
+            if (request.action === 'restore-recording-ui') {
+                if (!this.isInitialized) this.init();
+                this.showRecordBar();
+                this.isRecording = true;
+                const dot = document.getElementById('webext-rec-dot');
+                const close = document.getElementById('webext-rec-close');
+                if (dot) { dot.style.borderRadius = '3px'; dot.style.width = '12px'; dot.style.height = '12px'; dot.style.animation = 'webext-pulse 1.2s ease-in-out infinite'; }
+                // close button stays active during recording
+                // Resume timer from elapsed time sent by background
+                this.recordStartTime = Date.now() - (request.elapsed || 0);
+                this.recordTimerInterval = setInterval(() => {
+                    const el = Math.floor((Date.now() - this.recordStartTime) / 1000);
+                    const t = document.getElementById('webext-rec-timer');
+                    if (t) t.textContent = `${String(Math.floor(el / 60)).padStart(2, '0')}:${String(el % 60).padStart(2, '0')}`;
+                }, 1000);
+            }
         });
     }
 
@@ -197,8 +235,11 @@ class WebDrawingExtension {
         // Update tooltip
         const btn = document.querySelector('[data-tool="pin-cycle"]');
         if (btn) {
-            const labels = { none: 'Ghim trái', left: 'Ghim phải', right: 'Bỏ ghim' };
-            btn.setAttribute('data-tooltip', labels[this.pinState] || 'Ghim thanh công cụ');
+            const isEn = this.settings.lang === 'en';
+            const labels = isEn
+                ? { none: 'Pin Left', left: 'Pin Right', right: 'Unpin' }
+                : { none: 'Ghim trái', left: 'Ghim phải', right: 'Bỏ ghim' };
+            btn.setAttribute('data-tooltip', labels[this.pinState] || (isEn ? 'Pin Toolbar' : 'Ghim thanh công cụ'));
         }
     }
 
@@ -614,32 +655,6 @@ class WebDrawingExtension {
         `;
         document.body.appendChild(shapesPopup);
 
-        // Create screenshot popup
-        const screenshotPopup = document.createElement('div');
-        screenshotPopup.id = 'webext-screenshot-popup';
-        screenshotPopup.className = 'webext-draw-popup';
-        screenshotPopup.style.display = 'none';
-        screenshotPopup.innerHTML = `
-            <div class="webext-draw-screenshot-grid">
-                <button class="webext-draw-screenshot-btn" data-screenshot="region" title="Chụp vùng">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="4 2"/>
-                        <path d="M9 9h6v6H9z"/>
-                    </svg>
-                    <span>Chụp vùng</span>
-                </button>
-                <button class="webext-draw-screenshot-btn" data-screenshot="fullscreen" title="Toàn màn hình">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <rect x="2" y="3" width="20" height="14" rx="2"/>
-                        <line x1="8" y1="21" x2="16" y2="21"/>
-                        <line x1="12" y1="17" x2="12" y2="21"/>
-                    </svg>
-                    <span>Toàn màn hình</span>
-                </button>
-                            </div>
-        `;
-        document.body.appendChild(screenshotPopup);
-
         // Create More Tools popup
         const moretoolsPopup = document.createElement('div');
         moretoolsPopup.id = 'webext-moretools-popup';
@@ -651,7 +666,8 @@ class WebDrawingExtension {
 
         const moretoolsDefs = [
             { id: 'picker', label: 'Lấy màu', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m12 9-8.414 8.414A2 2 0 0 0 3 18.828v1.344a2 2 0 0 1-.586 1.414A2 2 0 0 1 3.828 21h1.344a2 2 0 0 0 1.414-.586L15 12"/><path d="m18 9 .4.4a1 1 0 1 1-3 3l-3.8-3.8a1 1 0 1 1 3-3l.4.4 3.4-3.4a1 1 0 1 1 3 3z"/></svg>' },
-            { id: 'screenshot', label: 'Chụp màn hình', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>' },
+            { id: 'screenshot-region', label: 'Chụp vùng', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="4 2"/><path d="M9 9h6v6H9z"/></svg>' },
+            { id: 'screenshot-full', label: 'Chụp khung hình', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><circle cx="12" cy="10" r="3"/></svg>' },
             { id: 'ruler', label: 'Thước đo', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h20v16H2z"/><line x1="6" y1="4" x2="6" y2="8"/><line x1="10" y1="4" x2="10" y2="10"/><line x1="14" y1="4" x2="14" y2="8"/><line x1="18" y1="4" x2="18" y2="10"/></svg>' },
             { id: 'stepmarker', label: 'Đánh số', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><text x="12" y="16" text-anchor="middle" fill="currentColor" stroke="none" font-size="12" font-weight="bold">1</text></svg>' },
             { id: 'blur', label: 'Làm mờ', svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1"/><circle cx="12" cy="8" r="1"/><circle cx="16" cy="8" r="1"/><circle cx="8" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="16" cy="12" r="1"/><circle cx="8" cy="16" r="1"/><circle cx="12" cy="16" r="1"/><circle cx="16" cy="16" r="1"/></svg>' },
@@ -821,11 +837,6 @@ class WebDrawingExtension {
                 }
 
                 // Handle screenshot tool - show popup
-                if (tool === 'screenshot') {
-                    this.togglePopup('screenshot', button);
-                    return;
-                }
-
                 // Handle more tools popup
                 if (tool === 'moretools') {
                     this.togglePopup('moretools', button);
@@ -936,24 +947,6 @@ class WebDrawingExtension {
             });
         });
 
-        // Screenshot buttons in popup
-        const screenshotButtons = document.querySelectorAll('.webext-draw-screenshot-btn');
-        screenshotButtons.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const screenshotType = e.currentTarget.dataset.screenshot;
-                this.closeAllPopups();
-                
-                // Auto-detect if there are drawings
-                const hasDrawings = this.shapes.length > 0;
-                
-                if (screenshotType === 'region') {
-                    this.startScreenshotMode(hasDrawings);
-                } else if (screenshotType === 'fullscreen') {
-                    this.captureFullScreen(hasDrawings);
-                }
-            });
-        });
-
         // More tools buttons in popup
         const moretoolButtons = document.querySelectorAll('.webext-moretools-btn');
         moretoolButtons.forEach(btn => {
@@ -971,10 +964,16 @@ class WebDrawingExtension {
                     this.pickColorImmediate();
                     return;
                 }
-                if (selectedTool === 'screenshot') {
-                    const btn = document.querySelector('.webext-draw-tool-btn[data-tool="moretools"]');
+                if (selectedTool === 'screenshot-region') {
                     this.closeAllPopups();
-                    this.togglePopup('screenshot', btn);
+                    const hasDrawings = this.shapes.length > 0;
+                    this.startScreenshotMode(hasDrawings);
+                    return;
+                }
+                if (selectedTool === 'screenshot-full') {
+                    this.closeAllPopups();
+                    const hasDrawings = this.shapes.length > 0;
+                    this.captureFullScreen(hasDrawings);
                     return;
                 }
                 if (selectedTool === 'record') {
@@ -1052,12 +1051,6 @@ class WebDrawingExtension {
                 !e.target.closest('#webext-shapes-popup')) {
                 shapesPopupEl.style.display = 'none';
                 document.querySelector('.webext-draw-tool-btn[data-tool="shapes"]')?.classList.remove('popup-active');
-            }
-            const screenshotPopupEl = document.getElementById('webext-screenshot-popup');
-            if (!e.target.closest('.webext-draw-tool-btn[data-tool="moretools"]') &&
-                !e.target.closest('#webext-moretools-popup') &&
-                !e.target.closest('#webext-screenshot-popup')) {
-                screenshotPopupEl.style.display = 'none';
             }
             const moretoolsPopupEl = document.getElementById('webext-moretools-popup');
             if (!e.target.closest('.webext-draw-tool-btn[data-tool="moretools"]') &&
@@ -3401,6 +3394,9 @@ class WebDrawingExtension {
         localStorage.setItem('webext-draw-pinned', this.pinState);
         if (this.uiElement) this.applyPinState();
 
+        // Update language for all tooltips/labels
+        this.updateLanguage();
+
         // Apply toolbar order
         this.applyToolbarOrder();
 
@@ -3447,12 +3443,92 @@ class WebDrawingExtension {
         });
     }
 
+    updateLanguage() {
+        const isEn = this.settings.lang === 'en';
+        const t = (vi, en) => isEn ? en : vi;
+
+        // Toolbar buttons
+        const toolTips = {
+            cursor: t('Con trỏ chuột', 'Cursor'),
+            move: t('Di chuyển', 'Move'),
+            pen: t('Bút vẽ', 'Pen'),
+            text: t('Chữ', 'Text'),
+            shapes: t('Hình dạng', 'Shapes'),
+            eraser: t('Tẩy', 'Eraser'),
+            color: t('Màu sắc', 'Color'),
+            clearall: t('Xóa tất cả', 'Clear All'),
+            moretools: t('Hộp công cụ', 'Toolbox'),
+            utilities: t('Tiện ích', 'Utilities'),
+            settings: t('Cài đặt', 'Settings'),
+        };
+        document.querySelectorAll('.webext-draw-tool-btn[data-tool]').forEach(btn => {
+            const tool = btn.dataset.tool;
+            if (toolTips[tool]) {
+                btn.setAttribute('data-tooltip', toolTips[tool]);
+                btn.title = '';
+            }
+        });
+
+        // Close button
+        const closeBtn = document.querySelector('.webext-draw-close-btn');
+        if (closeBtn) { closeBtn.setAttribute('data-tooltip', t('Đóng', 'Close')); closeBtn.title = ''; }
+
+        // Drag handle
+        const dragHandle = document.querySelector('.webext-drag-handle');
+        if (dragHandle) { dragHandle.title = t('Kéo để di chuyển', 'Drag to move'); }
+
+        // Shape buttons
+        const shapeTips = {
+            line: t('Đường thẳng', 'Line'), arrow: t('Mũi tên', 'Arrow'),
+            rectangle: t('Hình chữ nhật', 'Rectangle'), circle: t('Hình tròn', 'Circle'),
+            triangle: t('Tam giác', 'Triangle'), star: t('Ngôi sao', 'Star'),
+            diamond: t('Hình thoi', 'Diamond'), hexagon: t('Lục giác', 'Hexagon'),
+            pentagon: t('Ngũ giác', 'Pentagon'), ellipse: t('Elip', 'Ellipse'),
+            cross: t('Dấu cộng', 'Cross'), highlight: t('Highlight', 'Highlight'),
+            curve: t('Đường cong', 'Curve'), bezier: t('Bezier', 'Bezier'),
+            freepolygon: t('Đa giác tự do', 'Free Polygon'),
+        };
+        document.querySelectorAll('.webext-draw-shape-btn[data-shape]').forEach(btn => {
+            const shape = btn.dataset.shape;
+            if (shapeTips[shape]) { btn.setAttribute('data-tooltip', shapeTips[shape]); btn.title = ''; }
+        });
+
+        // More tools buttons
+        const moreTips = {
+            'screenshot-region': t('Chụp vùng', 'Capture Region'),
+            'screenshot-full': t('Chụp khung hình', 'Capture Screen'),
+            ruler: t('Thước đo', 'Ruler'),
+            stepmarker: t('Đánh số', 'Step Marker'), blur: t('Làm mờ', 'Blur'),
+            spotlight: t('Spotlight', 'Spotlight'), imagegrab: t('Lấy ảnh', 'Image Grab'),
+            note: t('Ghi chú', 'Note'), crop: t('Cắt & Sao chép', 'Crop & Copy'),
+            numarrow: t('Mũi tên số', 'Numbered Arrow'), record: t('Quay màn hình', 'Screen Record'),
+        };
+        document.querySelectorAll('.webext-moretools-btn[data-moretool]').forEach(btn => {
+            const id = btn.dataset.moretool;
+            if (moreTips[id]) btn.setAttribute('data-tooltip', moreTips[id]);
+        });
+
+        // Utility buttons
+        const utilTips = {
+            undo: t('Hoàn tác', 'Undo'), redo: t('Làm lại', 'Redo'),
+            'toggle-visibility': t('Ẩn/hiện nét vẽ', 'Show/Hide Drawings'),
+            'pin-left': t('Ghim trái', 'Pin Left'), 'pin-right': t('Ghim phải', 'Pin Right'),
+            unpin: t('Bỏ ghim', 'Unpin'),
+        };
+        document.querySelectorAll('.webext-moretools-btn[data-util]').forEach(btn => {
+            const id = btn.dataset.util;
+            if (utilTips[id]) btn.setAttribute('data-tooltip', utilTips[id]);
+        });
+
+    }
+
     getToolLabel(tool) {
         const vi = {
             cursor: 'Con trỏ', pen: 'Bút vẽ', text: 'Chữ', shapes: 'Hình dạng',
             move: 'Di chuyển', eraser: 'Tẩy', undo: 'Hoàn tác', redo: 'Làm lại',
             color: 'Màu sắc', picker: 'Lấy màu', clearall: 'Xóa tất cả',
-            screenshot: 'Chụp màn hình', duplicate: 'Nhân đôi', ruler: 'Thước đo',
+            'screenshot-region': 'Chụp vùng', 'screenshot-full': 'Chụp khung hình',
+            duplicate: 'Nhân đôi', ruler: 'Thước đo',
             stepmarker: 'Đánh số', blur: 'Làm mờ', spotlight: 'Spotlight',
             imagegrab: 'Lấy ảnh', highlighter: 'Highlight', stamp: 'Stamp',
             note: 'Ghi chú', magnifier: 'Kính lúp', moretools: 'Thêm',
@@ -3463,7 +3539,8 @@ class WebDrawingExtension {
             cursor: 'Cursor', pen: 'Pen', text: 'Text', shapes: 'Shapes',
             move: 'Move', eraser: 'Eraser', undo: 'Undo', redo: 'Redo',
             color: 'Color', picker: 'Pick Color', clearall: 'Clear All',
-            screenshot: 'Screenshot', duplicate: 'Duplicate', ruler: 'Ruler',
+            'screenshot-region': 'Capture Region', 'screenshot-full': 'Capture Screen',
+            duplicate: 'Duplicate', ruler: 'Ruler',
             stepmarker: 'Step Marker', blur: 'Blur', spotlight: 'Spotlight',
             imagegrab: 'Image Grab', highlighter: 'Highlight', stamp: 'Stamp',
             note: 'Note', magnifier: 'Magnifier', moretools: 'More',
@@ -3494,12 +3571,23 @@ class WebDrawingExtension {
                 #webext-settings-popup::-webkit-scrollbar { width:3px; }
                 #webext-settings-popup::-webkit-scrollbar-thumb { background:rgba(0,0,0,0.1); border-radius:3px; }
                 #webext-settings-popup * { box-sizing:border-box; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
-                .wsp-section { padding:8px 12px 4px; }
+                .wsp-section { padding:12px 16px 8px; }
                 .wsp-title { font-size:9px; font-weight:700; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; }
                 .wsp-row { display:flex; align-items:center; justify-content:space-between; padding:6px 0; }
                 .wsp-row + .wsp-row { border-top:1px solid #f3f3f3; }
                 .wsp-label { font-size:11px; color:#333; font-weight:500; }
-                .wsp-select { appearance:none; -webkit-appearance:none; padding:4px 22px 4px 8px; border:1px solid #e0e0e0; border-radius:6px; font-size:11px; font-weight:600; background:#f8f8f8 url("data:image/svg+xml,%3Csvg width='8' height='5' viewBox='0 0 8 5' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l3 3 3-3' stroke='%23999' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 6px center; outline:none; cursor:pointer; color:#333; }
+                .wsp-custom-select { position:relative; display:inline-block; min-width:60px; }
+                .wsp-custom-select-trigger { display:flex; align-items:center; justify-content:space-between; gap:6px; padding:5px 10px; border:1px solid #e0e0e0; border-radius:8px; font-size:11px; font-weight:600; background:#f8f8f8; color:#333; cursor:pointer; transition:all 0.15s; user-select:none; }
+                .wsp-custom-select-trigger:hover { border-color:#c0c0c0; background:#f0f0f0; }
+                .wsp-custom-select.open .wsp-custom-select-trigger { border-color:#5a67e8; background:#f0f0ff; }
+                .wsp-custom-select-arrow { width:8px; height:8px; display:flex; align-items:center; justify-content:center; transition:transform 0.2s; }
+                .wsp-custom-select-arrow svg { width:8px; height:5px; }
+                .wsp-custom-select.open .wsp-custom-select-arrow { transform:rotate(180deg); }
+                .wsp-custom-select-dropdown { position:absolute; top:calc(100% + 4px); right:0; min-width:100%; background:#fff; border:1px solid #e0e0e0; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.12); z-index:10; overflow:hidden; display:none; }
+                .wsp-custom-select.open .wsp-custom-select-dropdown { display:block; }
+                .wsp-custom-select-option { padding:6px 12px; font-size:11px; font-weight:500; color:#555; cursor:pointer; transition:all 0.12s; white-space:nowrap; }
+                .wsp-custom-select-option:hover { background:#f0f0ff; color:#5a67e8; }
+                .wsp-custom-select-option.selected { color:#5a67e8; font-weight:700; background:#f5f5ff; }
                 .wsp-range { -webkit-appearance:none; appearance:none; width:80px; height:4px; border-radius:2px; background:#e0e0e0; outline:none; cursor:pointer; }
                 .wsp-range::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:#5a67e8; cursor:pointer; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.2); }
                 .wsp-val { font-size:10px; font-weight:700; color:#5a67e8; min-width:24px; text-align:center; }
@@ -3523,23 +3611,22 @@ class WebDrawingExtension {
         popup.id = 'webext-settings-popup';
 
         const switchEl = (id, checked) => `<label class="wsp-switch"><input type="checkbox" id="${id}" ${checked ? 'checked' : ''}><span class="track"></span><span class="thumb"></span></label>`;
+        const customSelect = (id, options, selectedValue) => {
+            const arrow = `<span class="wsp-custom-select-arrow"><svg viewBox="0 0 8 5" fill="none"><path d="M1 1l3 3 3-3" stroke="#999" stroke-width="1.2" stroke-linecap="round"/></svg></span>`;
+            const selectedLabel = options.find(o => o.value === selectedValue)?.label || options[0].label;
+            const opts = options.map(o => `<div class="wsp-custom-select-option${o.value === selectedValue ? ' selected' : ''}" data-value="${o.value}">${o.label}</div>`).join('');
+            return `<div class="wsp-custom-select" id="${id}" data-value="${selectedValue}"><div class="wsp-custom-select-trigger"><span class="wsp-custom-select-text">${selectedLabel}</span>${arrow}</div><div class="wsp-custom-select-dropdown">${opts}</div></div>`;
+        };
 
         popup.innerHTML = `
             <div class="wsp-section">
                 <div class="wsp-row">
                     <span class="wsp-label">${t('Ngôn ngữ', 'Lang')}</span>
-                    <select id="ws-lang" class="wsp-select">
-                        <option value="vi" ${s.lang === 'vi' ? 'selected' : ''}>VI</option>
-                        <option value="en" ${s.lang === 'en' ? 'selected' : ''}>EN</option>
-                    </select>
+                    ${customSelect('ws-lang', [{value:'vi',label:'VI'},{value:'en',label:'EN'}], s.lang)}
                 </div>
                 <div class="wsp-row">
                     <span class="wsp-label">${t('Vị trí', 'Position')}</span>
-                    <select id="ws-position" class="wsp-select">
-                        <option value="bottom" ${s.defaultPosition === 'bottom' ? 'selected' : ''}>${t('Dưới', 'Bottom')}</option>
-                        <option value="left" ${s.defaultPosition === 'left' ? 'selected' : ''}>${t('Trái', 'Left')}</option>
-                        <option value="right" ${s.defaultPosition === 'right' ? 'selected' : ''}>${t('Phải', 'Right')}</option>
-                    </select>
+                    ${customSelect('ws-position', [{value:'bottom',label:t('Dưới','Bottom')},{value:'left',label:t('Trái','Left')},{value:'right',label:t('Phải','Right')}], s.defaultPosition)}
                 </div>
                 <div class="wsp-row">
                     <span class="wsp-label">${t('Màu', 'Color')}</span>
@@ -3569,10 +3656,7 @@ class WebDrawingExtension {
                 </div>
                 <div class="wsp-row">
                     <span class="wsp-label">${t('Ảnh chụp', 'Screenshot')}</span>
-                    <select id="ws-format" class="wsp-select">
-                        <option value="png" ${s.screenshotFormat === 'png' ? 'selected' : ''}>PNG</option>
-                        <option value="jpeg" ${s.screenshotFormat === 'jpeg' ? 'selected' : ''}>JPG</option>
-                    </select>
+                    ${customSelect('ws-format', [{value:'png',label:'PNG'},{value:'jpeg',label:'JPG'}], s.screenshotFormat)}
                 </div>
             </div>
         `;
@@ -3600,21 +3684,48 @@ class WebDrawingExtension {
 
         // Auto-save on any change
         const autoSave = () => {
-            this.settings.lang = popup.querySelector('#ws-lang').value;
-            this.settings.defaultPosition = popup.querySelector('#ws-position').value;
+            this.settings.lang = popup.querySelector('#ws-lang').dataset.value;
+            this.settings.defaultPosition = popup.querySelector('#ws-position').dataset.value;
             this.settings.defaultColor = popup.querySelector('#ws-color').value;
             this.settings.defaultStrokeWidth = parseInt(popup.querySelector('#ws-width').value);
             this.settings.defaultOpacity = parseInt(popup.querySelector('#ws-opacity').value) / 100;
             this.settings.autoCursor = popup.querySelector('#ws-autocursor').checked;
             this.settings.saveDrawings = popup.querySelector('#ws-savedrawings').checked;
-            this.settings.screenshotFormat = popup.querySelector('#ws-format').value;
+            this.settings.screenshotFormat = popup.querySelector('#ws-format').dataset.value;
             this.saveSettings();
             this.applySettings();
         };
 
-        popup.querySelectorAll('select, input').forEach(el => {
+        popup.querySelectorAll('input').forEach(el => {
             el.addEventListener('change', autoSave);
             el.addEventListener('input', autoSave);
+        });
+
+        // Custom select logic
+        popup.querySelectorAll('.wsp-custom-select').forEach(sel => {
+            const trigger = sel.querySelector('.wsp-custom-select-trigger');
+            trigger.addEventListener('click', (e) => {
+                e.stopPropagation();
+                // Close other open selects
+                popup.querySelectorAll('.wsp-custom-select.open').forEach(s => { if (s !== sel) s.classList.remove('open'); });
+                sel.classList.toggle('open');
+            });
+            sel.querySelectorAll('.wsp-custom-select-option').forEach(opt => {
+                opt.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const val = opt.dataset.value;
+                    sel.dataset.value = val;
+                    sel.querySelector('.wsp-custom-select-text').textContent = opt.textContent;
+                    sel.querySelectorAll('.wsp-custom-select-option').forEach(o => o.classList.remove('selected'));
+                    opt.classList.add('selected');
+                    sel.classList.remove('open');
+                    autoSave();
+                });
+            });
+        });
+        // Close custom selects when clicking outside
+        document.addEventListener('click', () => {
+            popup.querySelectorAll('.wsp-custom-select.open').forEach(s => s.classList.remove('open'));
         });
 
         // Live display updates
@@ -3786,7 +3897,7 @@ class WebDrawingExtension {
         tempCtx.drawImage(this.canvas, 0, 0);
 
         const link = document.createElement('a');
-        link.download = 'drawlite-export.png';
+        link.download = 'pagepen-export.png';
         link.href = tempCanvas.toDataURL('image/png');
         link.click();
     }
@@ -4360,14 +4471,12 @@ class WebDrawingExtension {
     togglePopup(type, button) {
         const colorPopup = document.getElementById('webext-color-popup');
         const shapesPopup = document.getElementById('webext-shapes-popup');
-        const screenshotPopup = document.getElementById('webext-screenshot-popup');
         const moretoolsPopup = document.getElementById('webext-moretools-popup');
         const utilsPopup = document.getElementById('webext-utils-popup');
 
         // Check if the popup is already open
         const isPopupOpen = (type === 'color' && colorPopup.style.display === 'block') ||
             (type === 'shapes' && shapesPopup.style.display === 'block') ||
-            (type === 'screenshot' && screenshotPopup.style.display === 'block') ||
             (type === 'moretools' && moretoolsPopup.style.display === 'block') ||
             (type === 'utilities' && utilsPopup.style.display === 'block');
 
@@ -4429,8 +4538,6 @@ class WebDrawingExtension {
             positionPopup(colorPopup);
         } else if (type === 'shapes') {
             positionPopup(shapesPopup);
-        } else if (type === 'screenshot') {
-            positionPopup(screenshotPopup);
         } else if (type === 'moretools') {
             positionPopup(moretoolsPopup);
         } else if (type === 'utilities') {
@@ -4534,11 +4641,9 @@ class WebDrawingExtension {
     updatePopupPositions() {
         const colorPopup = document.getElementById('webext-color-popup');
         const shapesPopup = document.getElementById('webext-shapes-popup');
-        const screenshotPopup = document.getElementById('webext-screenshot-popup');
         const moretoolsPopup = document.getElementById('webext-moretools-popup');
         const colorBtn = document.querySelector('.webext-draw-tool-btn[data-tool="color"]');
         const shapesBtn = document.querySelector('.webext-draw-tool-btn[data-tool="shapes"]');
-        const screenshotBtn = document.querySelector('.webext-draw-tool-btn[data-tool="screenshot"]');
         const moretoolsBtn = document.querySelector('.webext-draw-tool-btn[data-tool="moretools"]');
         const utilsPopup = document.getElementById('webext-utils-popup');
         const utilsBtn = document.querySelector('.webext-draw-tool-btn[data-tool="utilities"]');
@@ -4583,7 +4688,6 @@ class WebDrawingExtension {
 
         updatePopupPosition(colorPopup, colorBtn);
         updatePopupPosition(shapesPopup, shapesBtn);
-        updatePopupPosition(screenshotPopup, screenshotBtn);
         updatePopupPosition(moretoolsPopup, moretoolsBtn);
         updatePopupPosition(utilsPopup, utilsBtn);
     }
@@ -4591,17 +4695,14 @@ class WebDrawingExtension {
     closeAllPopups() {
         const colorPopup = document.getElementById('webext-color-popup');
         const shapesPopup = document.getElementById('webext-shapes-popup');
-        const screenshotPopup = document.getElementById('webext-screenshot-popup');
         const moretoolsPopup = document.getElementById('webext-moretools-popup');
         const utilsPopup = document.getElementById('webext-utils-popup');
         if (colorPopup) colorPopup.style.display = 'none';
         if (shapesPopup) shapesPopup.style.display = 'none';
-        if (screenshotPopup) screenshotPopup.style.display = 'none';
         if (moretoolsPopup) moretoolsPopup.style.display = 'none';
         if (utilsPopup) utilsPopup.style.display = 'none';
         if (colorPopup) colorPopup.style.transform = '';
         if (shapesPopup) shapesPopup.style.transform = '';
-        if (screenshotPopup) screenshotPopup.style.transform = '';
         if (moretoolsPopup) moretoolsPopup.style.transform = '';
         if (utilsPopup) utilsPopup.style.transform = '';
         // Remove active state from all tool buttons
@@ -4863,6 +4964,10 @@ class WebDrawingExtension {
                 .webext-draw-popup * { cursor:pointer !important; }
                 #webext-draw-ui { cursor:default !important; }
                 #webext-draw-ui * { cursor:pointer !important; }
+                #webext-record-preview { cursor:default !important; }
+                #webext-record-preview * { cursor:default !important; }
+                #webext-record-preview button { cursor:pointer !important; }
+                #webext-record-preview video { cursor:pointer !important; }
             `;
             document.head.appendChild(s);
         }
@@ -5041,10 +5146,12 @@ class WebDrawingExtension {
             else this.beginCapture();
         });
 
-        // Close — only when NOT recording
+        // Close — stop recording if active, then close bar
         closeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (this.isRecording) return;
+            if (this.isRecording) {
+                this.stopRecording();
+            }
             this.removeRecordingUI();
             this.uiElement.style.display = '';
             this.canvas.style.display = '';
@@ -5069,87 +5176,139 @@ class WebDrawingExtension {
 
     showCountdown() {
         return new Promise((resolve) => {
+            // Inject styles once
+            if (!document.getElementById('webext-countdown-style')) {
+                const s = document.createElement('style');
+                s.id = 'webext-countdown-style';
+                s.textContent = `
+                    @keyframes webext-cd-in {
+                        0% { transform:scale(0.3); opacity:0; }
+                        50% { transform:scale(1.05); opacity:1; }
+                        100% { transform:scale(1); opacity:1; }
+                    }
+                    @keyframes webext-cd-out {
+                        0% { transform:scale(1); opacity:1; }
+                        100% { transform:scale(2); opacity:0; }
+                    }
+                    @keyframes webext-cd-ring {
+                        0% { stroke-dashoffset:283; }
+                        100% { stroke-dashoffset:0; }
+                    }
+                `;
+                document.head.appendChild(s);
+            }
+
             const overlay = document.createElement('div');
             overlay.id = 'webext-countdown';
             overlay.style.cssText = `
                 position:fixed; inset:0; z-index:2147483647;
                 display:flex; align-items:center; justify-content:center;
-                pointer-events:none;
+                pointer-events:none; background:rgba(0,0,0,0.15);
+                transition:background 0.3s;
             `;
 
-            const circle = document.createElement('div');
-            circle.style.cssText = `
-                width:90px; height:90px; border-radius:50%;
-                background:rgba(0,0,0,0.6); backdrop-filter:blur(6px);
-                display:flex; align-items:center; justify-content:center;
-                font-size:40px; font-weight:700; color:#fff;
+            // Container for number + ring
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'position:relative; width:100px; height:100px;';
+
+            // Progress ring SVG
+            const ring = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            ring.setAttribute('width', '100');
+            ring.setAttribute('height', '100');
+            ring.style.cssText = 'position:absolute; inset:0; transform:rotate(-90deg);';
+            const circBg = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circBg.setAttribute('cx', '50'); circBg.setAttribute('cy', '50'); circBg.setAttribute('r', '45');
+            circBg.setAttribute('fill', 'none'); circBg.setAttribute('stroke', 'rgba(255,255,255,0.15)'); circBg.setAttribute('stroke-width', '4');
+            const circFg = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circFg.setAttribute('cx', '50'); circFg.setAttribute('cy', '50'); circFg.setAttribute('r', '45');
+            circFg.setAttribute('fill', 'none'); circFg.setAttribute('stroke', '#fff'); circFg.setAttribute('stroke-width', '4');
+            circFg.setAttribute('stroke-linecap', 'round');
+            circFg.setAttribute('stroke-dasharray', '283'); circFg.setAttribute('stroke-dashoffset', '283');
+            circFg.id = 'webext-cd-ring';
+            ring.appendChild(circBg);
+            ring.appendChild(circFg);
+
+            // Number
+            const num = document.createElement('div');
+            num.style.cssText = `
+                position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+                font-size:44px; font-weight:300; color:#fff;
                 font-family:-apple-system,sans-serif;
-                box-shadow:0 8px 32px rgba(0,0,0,0.2);
+                text-shadow:0 2px 20px rgba(0,0,0,0.3);
             `;
-            overlay.appendChild(circle);
+
+            // Background circle
+            const bg = document.createElement('div');
+            bg.style.cssText = `
+                position:absolute; inset:0; border-radius:50%;
+                background:rgba(0,0,0,0.5); backdrop-filter:blur(20px);
+                -webkit-backdrop-filter:blur(20px);
+            `;
+
+            wrap.appendChild(bg);
+            wrap.appendChild(ring);
+            wrap.appendChild(num);
+            overlay.appendChild(wrap);
             document.body.appendChild(overlay);
 
             let count = 3;
-            circle.textContent = count;
-            circle.style.animation = 'webext-countdown-pop 0.8s ease-out';
+
+            const showNumber = (n) => {
+                num.textContent = n;
+                wrap.style.animation = 'none';
+                wrap.offsetHeight;
+                wrap.style.animation = 'webext-cd-in 0.4s cubic-bezier(.16,1,.3,1) forwards';
+
+                // Animate ring for this second
+                circFg.style.animation = 'none';
+                circFg.setAttribute('stroke-dashoffset', '283');
+                circFg.offsetHeight;
+                circFg.style.animation = 'webext-cd-ring 0.9s linear forwards';
+            };
+
+            showNumber(count);
 
             const tick = setInterval(() => {
                 count--;
                 if (count <= 0) {
                     clearInterval(tick);
-                    overlay.remove();
-                    resolve();
+                    // Exit animation
+                    wrap.style.animation = 'webext-cd-out 0.3s ease-in forwards';
+                    overlay.style.background = 'rgba(0,0,0,0)';
+                    setTimeout(() => { overlay.remove(); resolve(); }, 300);
                 } else {
-                    circle.textContent = count;
-                    circle.style.animation = 'none';
-                    circle.offsetHeight; // force reflow
-                    circle.style.animation = 'webext-countdown-pop 0.8s ease-out';
+                    showNumber(count);
                 }
             }, 1000);
-
-            // Inject animation
-            if (!document.getElementById('webext-countdown-style')) {
-                const s = document.createElement('style');
-                s.id = 'webext-countdown-style';
-                s.textContent = `
-                    @keyframes webext-countdown-pop {
-                        0% { transform:scale(0.5); opacity:0; }
-                        20% { transform:scale(1.1); opacity:1; }
-                        40% { transform:scale(1); }
-                        80% { opacity:1; }
-                        100% { opacity:0.3; transform:scale(0.95); }
-                    }
-                `;
-                document.head.appendChild(s);
-            }
         });
     }
 
     async beginCapture() {
         try {
+            // Show screen picker FIRST
             const screenStream = await navigator.mediaDevices.getDisplayMedia({
                 video: { cursor: 'always', width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
                 audio: false
             });
             if (!screenStream) return;
 
-            // Get mic audio
+            // Get mic if enabled
             let combinedStream = screenStream;
             this.micStream = null;
             if (this.recMicEnabled) {
                 try {
                     this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                    // Combine screen video + mic audio
                     combinedStream = new MediaStream([
                         ...screenStream.getVideoTracks(),
                         ...this.micStream.getAudioTracks()
                     ]);
-                } catch (micErr) {
-                    // Mic access denied — continue without audio
-                    this.micStream = null;
-                }
+                } catch (e) { this.micStream = null; }
             }
 
+            // Countdown 3-2-1
+            await this.showCountdown();
+
+            // Setup MediaRecorder
             this.isRecording = true;
             this.recordedChunks = [];
 
@@ -5167,23 +5326,23 @@ class WebDrawingExtension {
                 this.recordedChunks = [];
                 this.isRecording = false;
                 this.removeRecordingUI();
-                this.uiElement.style.display = '';
-                this.canvas.style.display = '';
-                this.svgOverlay.style.display = '';
+                if (this.uiElement) this.uiElement.style.display = '';
+                if (this.canvas) this.canvas.style.display = '';
+                if (this.svgOverlay) this.svgOverlay.style.display = '';
+                window.removeEventListener('beforeunload', this._beforeUnloadHandler);
                 this.showRecordingPreview(URL.createObjectURL(blob));
             };
             screenStream.getVideoTracks()[0].onended = () => { if (this.isRecording) this.stopRecording(); };
 
-            // Countdown 3-2-1 then start
-            await this.showCountdown();
+            // Warn before leaving page
+            this._beforeUnloadHandler = (e) => { e.preventDefault(); e.returnValue = ''; };
+            window.addEventListener('beforeunload', this._beforeUnloadHandler);
 
             this.mediaRecorder.start(100);
 
             // Update UI → recording state
             const dot = document.getElementById('webext-rec-dot');
-            const close = document.getElementById('webext-rec-close');
             if (dot) { dot.style.borderRadius = '3px'; dot.style.width = '12px'; dot.style.height = '12px'; dot.style.animation = 'webext-pulse 1.2s ease-in-out infinite'; }
-            if (close) { close.style.opacity = '0.3'; close.style.pointerEvents = 'none'; }
 
             this.recordStartTime = Date.now();
             this.recordTimerInterval = setInterval(() => {
@@ -5200,6 +5359,8 @@ class WebDrawingExtension {
             this.mediaRecorder.stream.getTracks().forEach(t => t.stop());
         }
         if (this.micStream) { this.micStream.getTracks().forEach(t => t.stop()); this.micStream = null; }
+        this.isRecording = false;
+        window.removeEventListener('beforeunload', this._beforeUnloadHandler);
         if (this.recordTimerInterval) { clearInterval(this.recordTimerInterval); this.recordTimerInterval = null; }
     }
 
@@ -5208,189 +5369,6 @@ class WebDrawingExtension {
         if (ui) ui.remove();
         if (this.recordTimerInterval) { clearInterval(this.recordTimerInterval); this.recordTimerInterval = null; }
         this.removeRecCursor();
-    }
-
-    // Keep old name for compatibility
-    async startRecording() {
-        if (this.isRecording) {
-            this.stopRecording();
-            return;
-        }
-
-        try {
-            // Browser shows native picker: Chrome Tab / Window / Entire Screen
-            const stream = await navigator.mediaDevices.getDisplayMedia({
-                video: {
-                    cursor: 'always',
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 },
-                    frameRate: { ideal: 30 }
-                },
-                audio: false
-            });
-
-            if (!stream) return;
-
-            this.isRecording = true;
-            this.recordedChunks = [];
-
-            // Try MP4 (Chrome 124+), fallback WebM
-            let mimeType = 'video/webm';
-            this.recordIsMP4 = false;
-            for (const mime of ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4']) {
-                if (MediaRecorder.isTypeSupported(mime)) {
-                    mimeType = mime;
-                    this.recordIsMP4 = true;
-                    break;
-                }
-            }
-            if (!this.recordIsMP4) {
-                mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-                    ? 'video/webm;codecs=vp9' : 'video/webm';
-            }
-
-            this.mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8000000 });
-
-            this.mediaRecorder.ondataavailable = (e) => {
-                if (e.data.size > 0) this.recordedChunks.push(e.data);
-            };
-
-            this.mediaRecorder.onstop = () => {
-                const blob = new Blob(this.recordedChunks, { type: mimeType });
-                this.recordedChunks = [];
-                this.isRecording = false;
-                this.removeRecordingUI();
-                const videoUrl = URL.createObjectURL(blob);
-                this.showRecordingPreview(videoUrl);
-            };
-
-            // Stop when user stops sharing
-            stream.getVideoTracks()[0].onended = () => {
-                if (this.isRecording) this.stopRecording();
-            };
-
-            // Hide toolbar and canvas during recording
-            this.uiElement.style.display = 'none';
-            this.canvas.style.display = 'none';
-            this.svgOverlay.style.display = 'none';
-
-            this.mediaRecorder.start(100);
-            this.showRecordingUI();
-
-        } catch (err) {
-            // User cancelled or error
-            this.isRecording = false;
-        }
-    }
-
-    stopRecording() {
-        if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-            this.mediaRecorder.stop();
-            this.mediaRecorder.stream.getTracks().forEach(t => t.stop());
-        }
-        // Restore toolbar and canvas
-        this.uiElement.style.display = '';
-        this.canvas.style.display = '';
-        this.svgOverlay.style.display = '';
-    }
-
-    showRecordingUI() {
-        const ui = document.createElement('div');
-        ui.id = 'webext-recording-ui';
-        ui.style.cssText = `
-            position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
-            z-index:2147483647; display:flex; align-items:center; gap:10px;
-            background:#1a1a1a; color:#fff; padding:8px 16px; border-radius:12px;
-            box-shadow:0 2px 8px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.15);
-            font-family:-apple-system,sans-serif; font-size:13px; font-weight:500;
-            cursor:move; user-select:none;
-        `;
-
-        // Red dot (pulsing)
-        const dot = document.createElement('span');
-        dot.style.cssText = `
-            width:10px; height:10px; border-radius:50%; background:#ff3b30;
-            animation:webext-pulse 1.2s ease-in-out infinite; flex-shrink:0;
-        `;
-
-        // Timer
-        const timer = document.createElement('span');
-        timer.id = 'webext-rec-timer';
-        timer.textContent = '00:00';
-        timer.style.fontVariantNumeric = 'tabular-nums';
-
-        // Stop button
-        const stopBtn = document.createElement('button');
-        stopBtn.textContent = 'Dừng';
-        stopBtn.style.cssText = `
-            border:none; background:#ff3b30; color:#fff; padding:4px 12px;
-            border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;
-            font-family:-apple-system,sans-serif; transition:background 0.15s;
-        `;
-        stopBtn.onmouseenter = () => stopBtn.style.background = '#e0342b';
-        stopBtn.onmouseleave = () => stopBtn.style.background = '#ff3b30';
-        stopBtn.addEventListener('click', (e) => { e.stopPropagation(); this.stopRecording(); });
-
-        ui.appendChild(dot);
-        ui.appendChild(timer);
-        ui.appendChild(stopBtn);
-        document.body.appendChild(ui);
-
-        // Draggable
-        let isDragging = false, startX, startY, initX, initY;
-        ui.addEventListener('mousedown', (e) => {
-            if (e.target === stopBtn) return;
-            isDragging = true;
-            const rect = ui.getBoundingClientRect();
-            startX = e.clientX;
-            startY = e.clientY;
-            initX = rect.left;
-            initY = rect.top;
-            ui.style.transition = 'none';
-        });
-        document.addEventListener('mousemove', (e) => {
-            if (!isDragging) return;
-            const dx = e.clientX - startX;
-            const dy = e.clientY - startY;
-            const newX = Math.max(0, Math.min(initX + dx, window.innerWidth - ui.offsetWidth));
-            const newY = Math.max(0, Math.min(initY + dy, window.innerHeight - ui.offsetHeight));
-            ui.style.left = newX + 'px';
-            ui.style.top = newY + 'px';
-            ui.style.bottom = 'auto';
-            ui.style.transform = 'none';
-        });
-        document.addEventListener('mouseup', () => { isDragging = false; });
-
-        // Add pulse animation if not exists
-        if (!document.getElementById('webext-rec-styles')) {
-            const style = document.createElement('style');
-            style.id = 'webext-rec-styles';
-            style.textContent = `
-                @keyframes webext-pulse {
-                    0%, 100% { opacity:1; }
-                    50% { opacity:0.3; }
-                }
-                .webext-player-wrap:fullscreen {
-                    display:flex; align-items:center; justify-content:center;
-                    background:#000;
-                }
-                .webext-player-wrap:fullscreen video {
-                    max-width:100vw !important; max-height:100vh !important;
-                    width:100vw; height:100vh; object-fit:contain;
-                }
-            `;
-            document.head.appendChild(style);
-        }
-
-        // Start timer
-        this.recordStartTime = Date.now();
-        this.recordTimerInterval = setInterval(() => {
-            const elapsed = Math.floor((Date.now() - this.recordStartTime) / 1000);
-            const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
-            const secs = String(elapsed % 60).padStart(2, '0');
-            const timerEl = document.getElementById('webext-rec-timer');
-            if (timerEl) timerEl.textContent = `${mins}:${secs}`;
-        }, 1000);
     }
 
     showRecordingPreview(videoUrl) {
@@ -5660,42 +5638,75 @@ class WebDrawingExtension {
             selectionBox.style.height = height + 'px';
         };
 
-        const onMouseUp = async (e) => {
+        const onMouseUp = (e) => {
             if (!isSelecting) return;
             isSelecting = false;
 
             const currentX = e.clientX;
             const currentY = e.clientY;
-            
+
             const left = Math.min(startX, currentX);
             const top = Math.min(startY, currentY);
             const width = Math.abs(currentX - startX);
             const height = Math.abs(currentY - startY);
 
-            // Cleanup overlay elements
-            overlay.remove();
-            selectionBox.remove();
-            instruction.remove();
-
-            // Remove event listeners
-            document.removeEventListener('mousedown', onMouseDown);
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
-            document.removeEventListener('keydown', onKeyDown);
-
-            // Only capture if selection is meaningful
             if (width > 10 && height > 10) {
-                // Small delay to ensure overlay is removed
-                await new Promise(resolve => setTimeout(resolve, 100));
-                
-                // Capture screenshot
-                await this.captureScreenshotRegion(left, top, width, height);
-            }
+                // Show capture button
+                instruction.textContent = '';
+                const isEn = this.settings.lang === 'en';
+                const captureBtn = document.createElement('button');
+                captureBtn.textContent = isEn ? 'Capture' : 'Chụp';
+                captureBtn.style.cssText = `
+                    padding: 8px 24px; border: none; border-radius: 8px;
+                    background: #5a67e8; color: #fff; font-size: 14px; font-weight: 600;
+                    cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    box-shadow: 0 2px 8px rgba(90,103,232,0.4);
+                `;
+                const cancelBtn = document.createElement('button');
+                cancelBtn.textContent = isEn ? 'Cancel' : 'Huỷ';
+                cancelBtn.style.cssText = `
+                    padding: 8px 16px; border: none; border-radius: 8px;
+                    background: rgba(255,255,255,0.2); color: #fff; font-size: 14px; font-weight: 500;
+                    cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    margin-left: 8px;
+                `;
+                instruction.style.top = 'auto';
+                instruction.style.bottom = '20px';
+                instruction.style.display = 'flex';
+                instruction.style.gap = '8px';
+                instruction.appendChild(captureBtn);
+                instruction.appendChild(cancelBtn);
 
-            // Restore toolbar and canvas
-            if (toolbar) toolbar.style.display = originalToolbarDisplay;
-            this.canvas.style.display = originalCanvasDisplay;
-            this.svgOverlay.style.display = originalSvgDisplay;
+                // Remove drag listeners
+                overlay.removeEventListener('mousedown', onMouseDown);
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+
+                const cleanup = () => {
+                    overlay.remove();
+                    selectionBox.remove();
+                    instruction.remove();
+                    document.removeEventListener('keydown', onKeyDown);
+                    if (toolbar) toolbar.style.display = originalToolbarDisplay;
+                    this.canvas.style.display = originalCanvasDisplay;
+                    this.svgOverlay.style.display = originalSvgDisplay;
+                };
+
+                captureBtn.addEventListener('click', async () => {
+                    // Hide UI before capture
+                    overlay.style.display = 'none';
+                    selectionBox.style.display = 'none';
+                    instruction.style.display = 'none';
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    await this.captureScreenshotRegion(left, top, width, height);
+                    cleanup();
+                });
+
+                cancelBtn.addEventListener('click', cleanup);
+            } else {
+                // Selection too small, allow re-drag
+                selectionBox.style.display = 'none';
+            }
         };
 
         const onKeyDown = (e) => {
@@ -5771,12 +5782,10 @@ class WebDrawingExtension {
     }
 
     async captureFullScreen(includeDrawing = false) {
-        // Hide toolbar temporarily
         const toolbar = document.querySelector('.webext-draw-toolbar');
         const originalToolbarDisplay = toolbar ? toolbar.style.display : '';
         if (toolbar) toolbar.style.display = 'none';
-        
-        // Hide canvas and SVG only if not including drawing
+
         const originalCanvasDisplay = this.canvas.style.display;
         const originalSvgDisplay = this.svgOverlay.style.display;
         if (!includeDrawing) {
@@ -5784,16 +5793,11 @@ class WebDrawingExtension {
             this.svgOverlay.style.display = 'none';
         }
 
-        // Small delay to ensure elements are hidden
         await new Promise(resolve => setTimeout(resolve, 100));
 
         try {
-            const response = await chrome.runtime.sendMessage({
-                action: 'captureScreenshot'
-            });
-
+            const response = await chrome.runtime.sendMessage({ action: 'captureScreenshot' });
             if (response && response.dataUrl) {
-                // Download full screenshot directly
                 const a = document.createElement('a');
                 a.href = response.dataUrl;
                 a.download = `screenshot-fullscreen-${Date.now()}.png`;
@@ -5801,15 +5805,12 @@ class WebDrawingExtension {
                 a.click();
                 document.body.removeChild(a);
             } else {
-                console.error('Failed to capture screenshot:', response?.error);
                 alert('Screenshot failed. Please try again.');
             }
         } catch (error) {
-            console.error('Screenshot error:', error);
             alert('Screenshot failed. Please try again.');
         }
 
-        // Restore toolbar and canvas
         if (toolbar) toolbar.style.display = originalToolbarDisplay;
         this.canvas.style.display = originalCanvasDisplay;
         this.svgOverlay.style.display = originalSvgDisplay;
@@ -6202,15 +6203,14 @@ class WebDrawingExtension {
     }
 
     async downloadAllAsZip(images, labels) {
-        // Dynamically load JSZip
-        if (!window.JSZip) {
-            await new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-                script.onload = resolve;
-                script.onerror = reject;
-                document.head.appendChild(script);
-            });
+        if (typeof JSZip === 'undefined') {
+            const res = await chrome.runtime.sendMessage({ action: 'injectJSZip' });
+            if (!res || !res.ok) {
+                alert(this.settings.lang !== 'en'
+                    ? 'Không thể tải thư viện nén ZIP.'
+                    : 'Failed to load ZIP library.');
+                return;
+            }
         }
 
         const zip = new JSZip();
@@ -6272,6 +6272,6 @@ class WebDrawingExtension {
 
 }
 
-if (!window._drawLiteInstance) {
-    window._drawLiteInstance = new WebDrawingExtension();
+if (!window._pagePenInstance) {
+    window._pagePenInstance = new WebDrawingExtension();
 }

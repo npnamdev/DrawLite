@@ -38,7 +38,7 @@
             </ul>
 
             <h2>2. Local Storage</h2>
-            <p>PagePen uses your browser's local storage solely to save your preferences such as:</p>
+            <p>PagePen uses the browser's built-in <code>window.localStorage</code> (scoped to the current page's origin) solely to save your preferences such as:</p>
             <ul>
                 <li>Toolbar position (floating, pinned left, pinned right)</li>
                 <li>Default drawing settings (color, stroke width, opacity)</li>
@@ -49,7 +49,6 @@
             <p>PagePen requests the following browser permissions:</p>
             <ul>
                 <li><strong>activeTab:</strong> To overlay the drawing canvas on the current webpage when you click the extension icon</li>
-                <li><strong>storage:</strong> To save your local preferences (toolbar position, default color, stroke width)</li>
                 <li><strong>scripting:</strong> To inject the drawing tools into the active tab</li>
                 <li><strong>downloads:</strong> To save annotated screenshots as PNG files to your device when you click the Save button</li>
             </ul>

@@ -34,4 +34,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     chrome.downloads.download(options);
     return false;
   }
+
+  if (request.action === "injectJSZip") {
+    const tabId = sender.tab && sender.tab.id;
+    if (!tabId) {
+      sendResponse({ ok: false, error: "No tab id" });
+      return false;
+    }
+    chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["jszip.min.js"]
+    }).then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+    return true;
+  }
 });

@@ -1,18 +1,21 @@
 {
   "manifest_version": 3,
-  "name": "DrawLite - Draw & Annotate on Web",
-  "version": "1.1.0",
-  "description": "Draw, highlight, annotate and screenshot any webpage. Freehand pen, shapes, text, color picker and more.",
+  "name": "PagePen - Web Annotator & Screenshot",
+  "version": "1.1.1",
+  "description": "Draw, highlight, annotate and screenshot any webpage with freehand pen, shapes, text, arrows and a color picker.",
+  "minimum_chrome_version": "102",
+  "homepage_url": "https://github.com/",
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_icon": "icon.png"
+    "default_icon": "icon.png",
+    "default_title": "PagePen - Draw & Annotate"
   },
   "icons": {
     "16": "icon.png",
     "48": "icon.png",
     "128": "icon.png"
   },
-  "permissions": ["activeTab", "storage", "scripting", "downloads"]
+  "permissions": ["activeTab", "scripting", "downloads"]
 }
